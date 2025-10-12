@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Inspector - No Servers</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .no-servers-container { max-width: 600px; margin: 2rem auto; }
+    </style>
+</head>
+<body>
+    <div class="container no-servers-container">
+        <div class="card border-warning">
+            <div class="card-header bg-warning">
+                <h4 class="mb-0">⚠️ No MCP Servers Available</h4>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-4">
+                    <span style="font-size: 4rem;">🔌</span>
+                </div>
+
+                <h5>No Active Servers Found</h5>
+                <p class="text-muted">
+                    Your <code>mcp_servers.json</code> file doesn't contain any active MCP servers,
+                    or the file doesn't exist.
+                </p>
+
+                <div class="alert alert-info">
+                    <h6>Expected Location:</h6>
+                    <code>/home/yanshi/Desktop/MCP-CLient/mcp_servers.json</code>
+                </div>
+
+                <div class="d-grid gap-2 mt-4">
+                    <a href="/setup" class="btn btn-primary btn-lg">
+                        ⚙️ Configure New Server
+                    </a>
+                    <button class="btn btn-outline-secondary" onclick="checkAgain()">
+                        🔄 Check Again
+                    </button>
+                </div>
+
+                <div class="mt-4 pt-4 border-top">
+                    <h6>Quick Setup Examples:</h6>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <strong>Python Stdio:</strong>
+                            <div class="mt-2 text-start">
+                                <code>{
+    "my-server": {
+        "connection_type": "stdio",
+        "command": "python",
+        "args": ["server.py"],
+        "cwd": "/path/to/server"
+    }
+}</code>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>HTTP SSE:</strong>
+                            <div class="mt-2 text-start">
+                                <code>{
+    "my-server": {
+        "connection_type": "sse",
+        "url": "http://localhost:3000/mcp/sse"
+    }
+}</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function checkAgain() {
+            window.location.reload();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "FileSystem": {
+      "connection_type": "stdio",
+      "command": "python3",
+      "args": ["-u", "s2.py"],
+      "cwd": ".",  
+      "timeout": 5.0,
+      "disabled": false
+  },
+  "Terminal": {
+      "connection_type": "stdio",
+      "command": "python3",
+      "args": ["-u", "terminal2.py"],
+      "cwd": ".",  
+      "timeout": 5.0,
+      "disabled": false
+  },
+  "Memory": {
+        "connection_type": "stdio",
+        "command": "python3",
+        "args": ["-u", "memory.py"],
+        "cwd": "/home/yanshi/Desktop/MCP-CLient",
+        "timeout": 5.0,
+        "disabled": false
+    },
+  "WebAPI": {
+      "connection_type": "sse",
+      "url": "http://yanshi-corp:11235/mcp/sse",
+      "timeout": 30.0,
+      "sse_read_timeout": 300.0,
+      "disabled": false
+  }
+  
+}
