@@ -1,0 +1,25 @@
+<div class="col-md-9 main-content p-4">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 id="pageTitle">🛠️ MCP Inspector</h2>
+            {% if current_server %}
+            <p class="text-muted mb-0">Connected to: <strong>{{ current_server }}</strong></p>
+            {% endif %}
+        </div>
+        <div>
+            <button class="btn btn-outline-secondary btn-sm me-2" onclick="window.location.href='/servers'">
+                🔄 Change Server
+            </button>
+            <button class="btn btn-outline-primary" onclick="refreshCapabilities()">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Hidden capabilities data for JavaScript -->
+    {% if capabilities %}<pre id="capabilities-data" style="display: none;">{{ capabilities }}</pre>{% endif %}
+
+    {% include 'components/execution_form.html' %}
+    {% include 'components/results.html' %}
+</div>
