@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 # MCP imports
 from mcp.server.fastmcp import FastMCP, Context
 from pydantic import BaseModel, Field
-
+from mcp.server.fastmcp.prompts import base
 # Define memory file path using environment variable with fallback
 default_memory_path = Path(__file__).parent / 'memory.json'
 MEMORY_FILE_PATH = os.getenv('MEMORY_FILE_PATH')
@@ -164,6 +164,15 @@ async def server_lifespan(server: FastMCP) -> Dict[str, Any]:
 # Create MCP server
 mcp = FastMCP(name="memory-server", lifespan=server_lifespan)
 
+# Prompts
+@mcp.prompt()
+def query_knowledge_graph(query: str) -> list[base.Message]:
+    """Prompt to search and query the knowledge graph for specific information."""
+    return [
+        base.UserMessage(f"Search the knowledge graph for: {query}"),
+        base.AssistantMessage("I'll use the search_nodes tool to find relevant entities and relations. What specific information are you looking for?")
+    ]
+
 # Tools with individual params for direct validation
 @mcp.tool()
 async def create_entities(entities: List[Entity], ctx: Context) -> str:
@@ -220,13 +229,46 @@ async def search_nodes(query: str, ctx: Context) -> str:
     }, indent=2)
 
 @mcp.tool()
-async def open_nodes(names: List[str], ctx: Context) -> str:
-    """Open specific nodes in the knowledge graph by their names"""
-    graph = knowledge_graph_manager.open_nodes(names)
-    return json.dumps({
-        'entities': [e.model_dump(mode='json', by_alias=True) for e in graph.entities],
-        'relations': [r.model_dump(mode='json', by_alias=True) for r in graph.relations]
-    }, indent=2)
-
-if __name__ == "__main__":
+async def visualize_graph(ctx: Context) -> str:
+    """Visualize the knowledge graph as an interactive HTML UI."""
+    graph = knowledge_graph_manager.read_graph()
+    
+    # Generate simple HTML visualization of the graph
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Knowledge Graph Visualization</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            .entity {{ border: 1px solid #007bff; padding: 10px; margin: 10px; background-color: #f0f8ff; }}
+            .relation {{ margin: 10px; padding: 5px; background-color: #fff3cd; }}
+            .graph-container {{ max-width: 800px; margin: 0 auto; }}
+        </style>
+    </head>
+    <body>
+        <div class="graph-container">
+            <h1>Knowledge Graph</h1>
+            <h2>Entities ({len(graph.entities)})</h2>
+            {''.join(f'<div class="entity"><strong>{e.name}</strong> ({e.entityType})<br>Observations: {len(e.observations)}</div>' for e in graph.entities)}
+            <h2>Relations ({len(graph.relations)})</h2>
+            {''.join(f'<div class="relation">{r.from_} --[{r.relationType}]--> {r.to}</div>' for r in graph.relations)}
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Create UIResource structure manually (since no Python SDK for mcp-ui)
+    ui_resource = {
+        "type": "resource",
+        "resource": {
+            "uri": "ui://memory-graph-visualization",
+            "mimeType": "text/html",
+            "text": html_content
+        }
+    }
+    
+    return json.dumps(ui_resource)
     mcp.run(transport="stdio")

@@ -67,6 +67,12 @@ async def run_command(command: str, ctx: Context, directory: str = "~", timeout:
     if not os.path.isdir(directory):
         return f"Error: Directory '{directory}' does not exist or is not a directory"
 
+    # Basic safety gates
+    forbidden = ["rm -rf", ":(){:|:&};:", ">&", ">>", "<<", "|&", ";/", "`", "$(", "nohup", "&"]
+    if any(tok in parsed.command for tok in forbidden):
+        return "Error: Command contains forbidden patterns."
+    # Clamp timeout (0 < t <= 300s)
+    t = max(1.0, min(parsed.timeout, 300.0))
     process = await asyncio.create_subprocess_shell(
         parsed.command,
         cwd=directory,
@@ -74,7 +80,7 @@ async def run_command(command: str, ctx: Context, directory: str = "~", timeout:
         stderr=asyncio.subprocess.PIPE
     )
     try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=parsed.timeout)
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=t)
         returncode = process.returncode or 0
         stdout_str = maybe_truncate(stdout.decode(), parsed.truncate_after)
         stderr_str = maybe_truncate(stderr.decode(), parsed.truncate_after)
@@ -89,7 +95,7 @@ async def run_command(command: str, ctx: Context, directory: str = "~", timeout:
 
 # Prompt
 @mcp.prompt()
-def execute_terminal_command(command: str) -> list[Dict[str, str]]:
+def execute_terminal_command(command: str = "echo 'Hello from MCP Terminal'") -> list[Dict[str, str]]:
     """Prompt to run a terminal command with confirmation."""
     return [
         {"role": "user", "content": f"Run this terminal command:\n{command}"},

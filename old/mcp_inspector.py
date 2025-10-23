@@ -325,7 +325,10 @@ async def execute_tool(
         return {"status": "success", "result": result, "action_type": action_type, "action_name": action_name}
     except Exception as e:
         logger.exception("Execution failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        error_detail = str(e)
+        if "undefined" in error_detail.lower():
+            error_detail += " (This usually indicates an issue with resource/prompt access or missing capabilities)"
+        return JSONResponse(status_code=500, content={"status": "error", "message": error_detail})
 
 @app.get("/capabilities")
 async def get_capabilities():
