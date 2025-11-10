@@ -1,6 +1,6 @@
-# 🧠 MCP Inspector: A Declarative AI Workflow Planner
+# 🧠 AgentGovernor: A Declarative AI Workflow Planner
 
-**MCP Inspector** is an advanced AI agent architecture that moves **Beyond Code Mode**.
+**AgentGovernor** is an advanced AI agent architecture that moves **Beyond Code Mode**.
 It addresses the **security**, **auditability**, and **reliability** gaps of `eval()`-based agents by enforcing a strict separation between **planning** and **execution**.
 
 Instead of generating and running code, **LLMs are used as planners** to generate declarative **PlanYAML** files.
@@ -83,7 +83,7 @@ and applies the correct repair strategy.
 Clone the repository:
 
 ```bash
-git clone <https://github.com/veristamp/AgentGovernor>
+git clone https://github.com/veristamp/AgentGovernor
 cd AgentGovernor
 ```
 
@@ -99,8 +99,8 @@ Create your `.env` file:
 Copy the `.env.example` (if one exists) or create a new `.env` file and add your LLM API keys and model names.
 
 ```bash
-OPENROUTER_API_KEY="sk-or-..."
-LLM_MODEL_NAME="kwaipilot/kat-coder-pro:free" # Use your own LLM
+OPENROUTER_API_KEY="sk-or-..." #use only if you are using any open router model
+LLM_MODEL_NAME="granite-4.0-micro" # Use your own LLM
 ```
 
 Start services (launches Qdrant):
@@ -114,11 +114,18 @@ docker-compose up -d
 ### 2️⃣ Ingest Data
 
 Before you can run the planner, you must populate the RAG databases.
+Update the mcp_server.json file with the mcp servers you want to use.
+```bash
+uv run -m list_tools.py
+```
+this emits the tools to the tools_schema.json
+
 The `upsert.py` script ingests both tools and workflows.
 
 ```bash
 # This finds tools in tools_schema.json and workflows in /workflows
-uv run -m upsert
+uv run upsert.py
+
 ```
 
 This will populate two collections in Qdrant:

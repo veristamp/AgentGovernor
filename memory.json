@@ -1,4 +1,0 @@
-{"name": "Alice", "entityType": "Person", "observations": ["Works in software"], "type": "entity"}
-{"name": "Bob", "entityType": "Person", "observations": ["Works in hardware"], "type": "entity"}
-{"name": "CodeFunction", "entityType": "WorkflowTest", "observations": ["Fetched code for run_tool"], "type": "entity"}
-{"from": "Alice", "to": "Bob", "relationType": "KNOWS", "type": "relation"}
