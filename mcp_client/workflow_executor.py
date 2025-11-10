@@ -155,11 +155,7 @@ async def run_tool(mgr: MCPClientManager, qualified_name: str, args: Dict[str, A
         "arguments": args or {},
     }
     res = await mgr.execute_action(action)
-    # normalize to dict so we can capture
-    if isinstance(res, dict):
-        return res
-    return {"output": str(res)}
-
+    return res
 
 async def exec_sequential_steps(mgr: MCPClientManager, steps: Sequence[Dict[str, Any]], vars: MutableMapping[str, Any]) -> None:
     """

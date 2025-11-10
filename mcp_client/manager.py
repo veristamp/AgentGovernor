@@ -278,43 +278,57 @@ class MCPClientManager:
                 content = await asyncio.wait_for(call, timeout=args.get("_timeout", 60))
 
                 parts: List[str] = []
+                structured_output_found = False
 
-                for block in content:
-                    # dict-like support and attr support
-                    bget = block.get if hasattr(block, "get") else lambda k, d=None: getattr(block, k, d)
-                    btype = bget("type")
+                try:
+                    for block in content:
+                        bget = block.get if hasattr(block, "get") else lambda k, d=None: getattr(block, k, d)
+                        struct_content = bget("structuredContent")
+                        if isinstance(struct_content, dict):
+                            if "result" in struct_content:
+                                parts.append(str(struct_content["result"]))
+                                structured_output_found = True
+                                break
+                            parts.append(json.dumps(struct_content))
+                            structured_output_found = True
+                            break
+                except Exception:
+                    structured_output_found = False
 
-                    if btype == "resource":
-                        ui_data = bget("resource")
-                        if ui_data:
-                            parts.append(self._handle_ui_resource(ui_data))
+                if not structured_output_found:
+                    for block in content:
+                        bget = block.get if hasattr(block, "get") else lambda k, d=None: getattr(block, k, d)
+                        btype = bget("type")
+
+                        if btype == "resource":
+                            ui_data = bget("resource")
+                            if ui_data:
+                                parts.append(self._handle_ui_resource(ui_data))
                             continue
 
-                    txt = bget("text")
-                    if isinstance(txt, str) and txt:
-                        # Heuristic: embedded UIResource in text (JSON)
-                        if '"mimeType"' in txt:
-                            try:
-                                parsed = json.loads(txt)
-                                res = parsed.get("resource") if isinstance(parsed, dict) else None
-                                if res and res.get("mimeType") == "text/html":
-                                    parts.append(self._handle_ui_resource(res))
-                                    continue
-                            except json.JSONDecodeError:
-                                pass
-                        parts.append(txt)
-                        continue
+                        txt = bget("text")
+                        if isinstance(txt, str) and txt:
+                            if '"mimeType"' in txt:
+                                try:
+                                    parsed = json.loads(txt)
+                                    res = parsed.get("resource") if isinstance(parsed, dict) else None
+                                    if res and res.get("mimeType") == "text/html":
+                                        parts.append(self._handle_ui_resource(res))
+                                        continue
+                                except json.JSONDecodeError:
+                                    pass
+                            parts.append(txt)
+                            continue
 
-                    # Fallback stringification
-                    try:
-                        s = str(block)
-                        if s and s != "None":
-                            parts.append(s)
-                    except Exception:
-                        pass
+                        try:
+                            s = str(block)
+                            if s and s != "None":
+                                parts.append(s)
+                        except Exception:
+                            pass
 
                 out = "\n".join(parts).strip()
-                return {"output": out or "No output.", "blocks": content}
+                return out or "No output."
 
             if kind == "resource":
                 # Resolve meta and ALWAYS read by URI

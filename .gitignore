@@ -20,3 +20,7 @@ somefile.txt
 uv.lock
 digest.txt
 qdrant_data
+.env
+memory.json
+tool_schema.json
+uv.lock

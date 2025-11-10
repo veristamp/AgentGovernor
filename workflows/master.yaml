@@ -1,0 +1,80 @@
+version: 1
+
+vars:
+  # --- Input Vars (what an LLM would customize) ---
+  doc_library: "react"
+  doc_topic: "hooks"
+  code_target_function: "run_tool"
+  code_target_path: "mcp_client/executioner.py"
+  output_dir: "./_master_workflow_output"
+
+steps:
+
+  # --- Phase 1: Run parallel "fetch" tasks ---
+
+  get_react_docs:
+    tool: "context7.resolve-library-id"
+    args:
+      libraryName: "${vars.doc_library}"
+
+  get_code_function:
+    tool: "modelcontextprotocol-python-sdk.get-code"
+    args:
+      name: "${vars.code_target_function}"
+      path: "${vars.code_target_path}"
+
+  get_code_tree:
+    tool: "modelcontextprotocol-python-sdk.folder-tree-structure"
+    args:
+      path: "mcp_client"
+
+  setup_dir:
+    tool: filesystem.create_directory
+    args:
+      path: "${vars.output_dir}"
+
+  # --- Phase 2: Run tasks that depend on Phase 1 ---
+
+  write_docs_to_file:
+    tool: filesystem.write_file
+    args:
+      path: "${vars.output_dir}/react_docs_id.txt"
+      # This step chains data from a DIFFERENT server (context7)
+      content: "Docs for ${vars.doc_library}: ${steps.get_react_docs.output}"
+    depends_on:
+      - "get_react_docs"
+      - "setup_dir" # Must wait for the dir to exist
+
+  create_memory_entity:
+    tool: memory.create_entities
+    args:
+      entities:
+        - name: "CodeFunction"
+          entityType: "WorkflowTest"
+          # This step chains data from the SDK server
+          observations: ["Fetched code for ${vars.code_target_function}"]
+    depends_on:
+      - "get_code_function" # Must wait for the code to be fetched
+
+  # --- Phase 3: A "Join" step ---
+  # This step must wait for filesystem, memory, and sdk tasks to all finish.
+
+  list_final_directory:
+    tool: terminal.run_command
+    args:
+      command: "ls -R ${vars.output_dir}"
+    depends_on:
+      - "write_docs_to_file"    # Depends on filesystem
+      - "create_memory_entity"  # Depends on memory
+      - "get_code_tree"         # Depends on sdk
+
+  # --- Phase 4: Final Log ---
+
+  final_log:
+    log: |
+      MASTER WORKFLOW COMPLETE.
+      - Context7 Docs: ${steps.get_react_docs.output}
+      - File Written: ${steps.write_docs_to_file.output}
+      - Terminal Output: ${steps.list_final_directory.output}
+    depends_on:
+      - "list_final_directory"
