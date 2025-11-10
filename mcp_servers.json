@@ -3,7 +3,7 @@
   "FileSystem": {
       "connection_type": "stdio",
       "command": "python",
-      "args": ["-u", "s2.py"],
+      "args": ["-u", "filesystem.py"],
       "cwd": ".",  
       "timeout": 5.0,
       "disabled": false
@@ -11,7 +11,7 @@
   "Terminal": {
       "connection_type": "stdio",
       "command": "python",
-      "args": ["-u", "terminal2.py"],
+      "args": ["-u", "terminal.py"],
       "cwd": ".",  
       "timeout": 5.0,
       "disabled": false
