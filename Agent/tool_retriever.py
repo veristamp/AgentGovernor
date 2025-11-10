@@ -3,11 +3,14 @@
 Module for retrieving relevant tools from Qdrant.
 Uses Hybrid Search (RRF) to get candidates, then
 a Reranker to get the final relevant tools.
+
+** MODIFIED to support Per-Query Reranking for true diversification **
 """
 from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any, Dict, List
 from collections import defaultdict
 
@@ -36,119 +39,150 @@ except Exception as e:
     reranker = None
     qdrant_client = None
 
-def find_relevant_tools(query: str, top_k: int = config.DEFAULT_TOOL_TOP_K) -> List[Dict[str, Any]]:
+def find_relevant_tools(
+    queries: List[str],  # Changed from query: str
+    top_k: int = config.DEFAULT_TOOL_TOP_K
+) -> List[Dict[str, Any]]:
     """
     Finds relevant tools from Qdrant using hybrid search + reranking.
     
-    Returns a list of tool dictionaries (the payload from Qdrant).
+    LOGIC (Per-Query Reranking):
+    1. Loop through each sub-query.
+    2. For each query, run hybrid search (dense + sparse).
+    3. RRF-merge the results for *that query*.
+    4. Rerank the candidates *against that query*.
+    5. Take the top K_per_query tools.
+    6. Collate, de-duplicate, and return the final balanced list.
     """
     if not all([qdrant_client, dense_embedder, sparse_embedder, reranker]):
         log.error("Tool retriever is not initialized. Cannot find tools.")
         return []
-
-    log.info(f"Generating embeddings for query: '{query}'")
-    dense_vec = dense_embedder.embed([query])[0]
-    sparse_vec_data = sparse_embedder.embed([query])[0]
     
-    sparse_vec = qm.SparseVector(
-        indices=sparse_vec_data["indices"],
-        values=sparse_vec_data["values"]
-    )
+    if not queries:
+        log.warning("find_relevant_tools received an empty list of queries.")
+        return []
 
-    log.info(f"Searching collection '{config.QDRANT_COLLECTION_NAME}' for {config.HYBRID_CANDIDATE_COUNT} candidates...")
+    # Use a dict to automatically de-duplicate tools
+    final_tools_map: Dict[str, Dict[str, Any]] = {}
     
-    try:
-        d_query = qm.QueryRequest(
-            query=dense_vec,
-            using='dense', 
-            limit=config.HYBRID_CANDIDATE_COUNT,
-            with_payload=True,
-            with_vector=False
-        )
-        
-        query_requests = [d_query]
+    k_per_query = math.ceil(top_k / len(queries)) + 2
+    
+    log.info(f"Starting diversified RAG for {len(queries)} sub-queries (target {k_per_query} tools/query)...")
 
-        if sparse_vec.indices and sparse_vec.values:
-            s_query = qm.QueryRequest(
-                query=sparse_vec,
-                using='bm25', 
+    for query in queries:
+        log.info(f"--- Processing sub-query: '{query}' ---")
+        try:
+            # --- 1. Embed THIS query ---
+            dense_vec = dense_embedder.embed([query])[0]
+            sparse_vec_data = sparse_embedder.embed([query])[0]
+            
+            sparse_vec = qm.SparseVector(
+                indices=sparse_vec_data["indices"],
+                values=sparse_vec_data["values"]
+            )
+            
+            # --- 2. Build batch request for THIS query ---
+            query_requests = []
+            query_requests.append(qm.QueryRequest(
+                query=dense_vec,
+                using='dense', 
                 limit=config.HYBRID_CANDIDATE_COUNT,
                 with_payload=True,
                 with_vector=False
-            )
-            query_requests.append(s_query)
-        else:
-            log.warning("Empty sparse vector generated for query, skipping sparse search.")
-        
-        results_batches = qdrant_client.query_batch_points(
-            collection_name=config.QDRANT_COLLECTION_NAME,
-            requests=query_requests
-        )
-        
-        d_points = results_batches[0].points if len(results_batches) > 0 and results_batches[0] else []
-        s_points = results_batches[1].points if len(results_batches) > 1 and results_batches[1] else []
-        
-        rrf_k = 60 
-        rankings = defaultdict(float)
-        all_hits_map = {} 
-
-        for i, hit in enumerate(d_points, start=1):
-            hit_id = getattr(hit, "id")
-            if hit_id:
-                rankings[hit_id] += (1.0 / (rrf_k + i))
-                all_hits_map[hit_id] = hit
-
-        for i, hit in enumerate(s_points or [], start=1):
-            hit_id = getattr(hit, "id")
-            if hit_id:
-                rankings[hit_id] += (1.0 / (rrf_k + i))
-                all_hits_map[hit_id] = hit
-        
-        if not rankings:
-            log.warning("Hybrid search returned no results.")
-            return []
+            ))
             
-        sorted_ids = sorted(rankings.keys(), key=lambda pid: rankings[pid], reverse=True)[:config.HYBRID_CANDIDATE_COUNT]
-        
-        candidate_items = [all_hits_map[pid] for pid in sorted_ids if pid in all_hits_map]
-        
-        log.info(f"Reranking {len(candidate_items)} candidates against query...")
-        
-        reranked_items = reranker.rerank(query, candidate_items, top_n=top_k)
-        
-        log.info(f"Reranking complete. Returning top {len(reranked_items)} tools.")
+            if sparse_vec.indices and sparse_vec.values:
+                query_requests.append(qm.QueryRequest(
+                    query=sparse_vec,
+                    using='bm25', 
+                    limit=config.HYBRID_CANDIDATE_COUNT,
+                    with_payload=True,
+                    with_vector=False
+                ))
 
-        tools = []
-        for item in reranked_items:
-            payload = getattr(item, "payload", {})
-            if payload:
+            # --- 3. Run search for THIS query ---
+            results_batches = qdrant_client.query_batch_points(
+                collection_name=config.QDRANT_COLLECTION_NAME,
+                requests=query_requests
+            )
+
+            # --- 4. RRF merge for THIS query ---
+            rrf_k = 60 
+            rankings = defaultdict(float)
+            all_hits_map = {} 
+
+            for results_batch in results_batches:
+                if not results_batch:
+                    continue
+                for i, hit in enumerate(results_batch.points, start=1):
+                    hit_id = getattr(hit, "id")
+                    if hit_id:
+                        rankings[hit_id] += (1.0 / (rrf_k + i))
+                        all_hits_map[hit_id] = hit
+            
+            if not rankings:
+                log.warning(f"No results for sub-query: '{query}'")
+                continue # Skip to next query
+                
+            # Get top N candidates from the merged RRF rankings
+            sorted_ids = sorted(rankings.keys(), key=lambda pid: rankings[pid], reverse=True)[:config.HYBRID_CANDIDATE_COUNT]
+            candidate_items = [all_hits_map[pid] for pid in sorted_ids if pid in all_hits_map]
+            
+            # --- 5. Rerank against THIS query ---
+            log.info(f"Reranking {len(candidate_items)} candidates against ITS OWN query.")
+            # THIS IS THE KEY FIX: rerank against `query`, not `queries[0]`
+            reranked_items = reranker.rerank(query, candidate_items, top_n=k_per_query) 
+            
+            # --- 6. Add finalists to the map ---
+            for item in reranked_items:
+                payload = getattr(item, "payload", {})
+                if not payload:
+                    continue
+                
+                qname = payload.get('qualified_name')
+                if not qname:
+                    continue
+
+                # Load schema
                 try:
                     payload["schema"] = json.loads(payload.get("schema_json", "{}"))
                 except json.JSONDecodeError:
                     payload["schema"] = {}
-                tools.append(payload)
-                log.info(f"  -> Reranked Tool: {payload['qualified_name']}")
+                
+                # Add to map (de-duplicates)
+                if qname not in final_tools_map:
+                    final_tools_map[qname] = payload
+                    log.info(f"  -> Added tool for this query: {qname}")
         
-        log.info(f"Retrieved and reranked {len(tools)} tools.")
-        return tools
+        except Exception as e:
+            log.error(f"Error processing sub-query '{query}': {e}", exc_info=True)
+            continue # Don't let one failed query stop the others
 
-    except Exception as e:
-        log.error(f"Error searching Qdrant: {e}", exc_info=True)
-        return []
+    # --- 7. Return the final list ---
+    final_tool_list = list(final_tools_map.values())
+    log.info(f"Total diverse tools retrieved: {len(final_tool_list)}")
+    return final_tool_list
 
 if __name__ == '__main__':
     log.info("--- Running Tool Retriever Standalone Test ---")
     
-    test_query = "create a new entity in the knowledge graph about a user"
+    # Test with multiple queries to simulate diversified RAG
+    test_queries = [
+        "create a new entity in the knowledge graph about a user",
+        "list all files in the current directory",
+        "run a shell command"
+    ]
     
     if not all([qdrant_client, dense_embedder, sparse_embedder, reranker]):
         log.critical("Failed to initialize models. Exiting test.")
     else:
         try:
-            tools = find_relevant_tools(test_query)
+            # Pass the list of queries
+            tools = find_relevant_tools(test_queries)
+            
             if tools:
                 log.info(f"--- Test Query Succeeded ---")
-                log.info(f"Query: '{test_query}'")
+                log.info(f"Queries: {test_queries}")
                 log.info(f"Found {len(tools)} tools:")
                 for i, tool in enumerate(tools):
                     log.info(f"  {i+1}. {tool['qualified_name']}")

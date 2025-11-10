@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Set, Tuple
 
 import yaml
 from jsonschema import Draft7Validator, SchemaError, ValidationError
-# Regex to find interpolations
 VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_\.]*)\}")
 
 class PlanValidator:
@@ -122,14 +121,14 @@ class PlanValidator:
             for error in sorted(validator.iter_errors(tool_args), key=str):
                 is_interpolation = isinstance(error.instance, str) and VAR_PATTERN.search(error.instance)
                 
-                # Don't flag 'type' errors for interpolation strings
+                error_path_str = '.'.join(map(str, error.path))
+
                 if error.validator == "type" and is_interpolation:
-                    self.warnings.append(f"Step '{step_id}': Arg '{'.'.join(error.path)}' is dynamic. Type validation skipped.")
-                # Flag 'required' errors even if interpolation is possible
+                    self.warnings.append(f"Step '{step_id}': Arg '{error_path_str}' is dynamic. Type validation skipped.")
                 elif error.validator == "required":
                      self.errors.append(f"Step '{step_id}': Missing required arg '{error.message}'")
                 else:
-                    self.errors.append(f"Step '{step_id}' (Tool: {tool_name}): Arg error at '{'.'.join(error.path)}' - {error.message}")
+                    self.errors.append(f"Step '{step_id}' (Tool: {tool_name}): Arg error at '{error_path_str}' - {error.message}")
 
         except SchemaError as e:
             self.errors.append(f"Step '{step_id}': Internal Schema Error for {tool_name}: {e}")
