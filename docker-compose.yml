@@ -23,18 +23,3 @@ services:
     # This node joins the cluster by bootstrapping against the first node's URI.
     command: ["./qdrant", "--bootstrap", "http://qdrant-1:6335"]
 
-  crawl4ai:
-    image: 'unclecode/crawl4ai:latest'
-    container_name: crawl4ai_service
-    ports:
-      - '11235:11235'
-    environment:
-      - MAX_CONCURRENT_TASKS=20
-      - LOG_LEVEL=INFO
-    volumes:
-      - '/dev/shm:/dev/shm'
-      - 'crawl4ai_data:/app/data'
-    restart: unless-stopped
-
-volumes:
-  crawl4ai_data: null
