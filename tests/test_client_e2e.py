@@ -60,27 +60,32 @@ async def main() -> int:
 
             # 1) list directory
             out = await mgr.execute_action({"action_type":"tool","action_name":list_dir,"arguments":{"path":str(ws_path)}})
-            ok("fs.list_directory", isinstance(out, str) and out.strip() != "" and not out.lower().startswith("error"))
+            # --- FIX: Check for dict and out['output'] ---
+            ok("fs.list_directory", isinstance(out, dict) and out['output'].strip() != "" and not out['output'].lower().startswith("error"))
 
             # 2) write + read
             newp = ws_path / "gamma.txt"
             w = await mgr.execute_action({"action_type":"tool","action_name":write_file,"arguments":{"path":str(newp),"content":"gamma!\n"}})
             r = await mgr.execute_action({"action_type":"tool","action_name":read_file,"arguments":{"path":str(newp)}})
-            ok("fs.write_file+read_file", isinstance(w, str) and isinstance(r, str) and r.strip() != "" and not r.lower().startswith("error"))
+            # --- FIX: Check for dict and r['output'] ---
+            ok("fs.write_file+read_file", isinstance(w, dict) and isinstance(r, dict) and r['output'].strip() != "" and not r['output'].lower().startswith("error"))
 
             # 3) edit (dry_run default True on your server)
             e = await mgr.execute_action({"action_type":"tool","action_name":edit_file,
                                           "arguments":{"path":str(newp),"edits":[{"oldText":"gamma!","newText":"delta!"}]}})
-            ok("fs.edit_file (dry_run)", isinstance(e, str) and e.strip() != "" and not e.lower().startswith("error"))
+            # --- FIX: Check for dict and e['output'] ---
+            ok("fs.edit_file (dry_run)", isinstance(e, dict) and e['output'].strip() != "" and not e['output'].lower().startswith("error"))
 
             # 4) search with exclude
             s = await mgr.execute_action({"action_type":"tool","action_name":search_files,
                                           "arguments":{"path":str(ws_path),"pattern":"txt","exclude_patterns":[r"nested/.*"]}})
-            ok("fs.search_files exclude", isinstance(s, str) and s.strip() != "" and not s.lower().startswith("error"))
+            # --- FIX: Check for dict and s['output'] ---
+            ok("fs.search_files exclude", isinstance(s, dict) and s['output'].strip() != "" and not s['output'].lower().startswith("error"))
 
             # 5) directory tree
             t = await mgr.execute_action({"action_type":"tool","action_name":tree,"arguments":{"path":str(ws_path)}})
-            ok("fs.directory_tree", isinstance(t, str) and t.strip() != "" and not t.lower().startswith("error"))
+            # --- FIX: Check for dict and t['output'] ---
+            ok("fs.directory_tree", isinstance(t, dict) and t['output'].strip() != "" and not t['output'].lower().startswith("error"))
 
             # 6) terminal resource + prompt + tool
             rs = await mgr.execute_action({"action_type":"resource","action_name":term_status,"arguments":{}})
@@ -90,11 +95,13 @@ async def main() -> int:
             ok("term.prompt execute", isinstance(pr, str) and pr.strip() != "" and not pr.lower().startswith("error"))
 
             rc = await mgr.execute_action({"action_type":"tool","action_name":run_cmd,"arguments":{"command":"echo hi_from_terminal","directory":"~","timeout":5.0}})
-            ok("term.run_command", isinstance(rc, str) and "hi_from_terminal" in rc)
+            # --- FIX: Check for dict and rc['output'] ---
+            ok("term.run_command", isinstance(rc, dict) and "hi_from_terminal" in rc['output'])
 
             # 7) denylist check
             dn = await mgr.execute_action({"action_type":"tool","action_name":run_cmd,"arguments":{"command":"rm -rf /","directory":"~","timeout":2.0}})
-            ok("term.run_command denylist", isinstance(dn, str) and "forbidden" in dn.lower())
+            # --- FIX: Check for dict and dn['output'] ---
+            ok("term.run_command denylist", isinstance(dn, dict) and "forbidden" in dn['output'].lower())
 
     return 0
 

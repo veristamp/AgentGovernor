@@ -25,8 +25,8 @@ class SseConfig(BaseModel):
     connection_type: str = "sse"
     url: str
     headers: Dict[str, Any] = Field(default_factory=dict)
-    timeout: float = 5.0
-    sse_read_timeout: float = 300.0
+    timeout: Optional[float] = None
+    sse_read_timeout: Optional[float] = None
     disabled: bool = False
 
 def parse_server_config(data: Dict[str, Any]) -> BaseModel:

@@ -1,0 +1,40 @@
+services:
+  qdrant-1:
+    image: qdrant/qdrant:latest
+    container_name: qdrant-1
+    restart: always
+    ports:
+      - "6333:6333"  # API Port for your app to connect to
+      - "6334:6334"  # gRPC
+    volumes:
+      - ./qdrant_data/node1:/qdrant/storage
+    # This node is the first peer. Its URI is used for others to join.
+    command: ["./qdrant", "--uri", "http://qdrant-1:6335"]
+  
+  qdrant-2:
+    image: qdrant/qdrant:latest
+    container_name: qdrant-2
+    restart: always
+    ports:
+      - "6336:6333" # Expose on a different host port to avoid conflicts
+      - "6337:6334"
+    volumes:
+      - ./qdrant_data/node2:/qdrant/storage
+    # This node joins the cluster by bootstrapping against the first node's URI.
+    command: ["./qdrant", "--bootstrap", "http://qdrant-1:6335"]
+
+  crawl4ai:
+    image: 'unclecode/crawl4ai:latest'
+    container_name: crawl4ai_service
+    ports:
+      - '11235:11235'
+    environment:
+      - MAX_CONCURRENT_TASKS=20
+      - LOG_LEVEL=INFO
+    volumes:
+      - '/dev/shm:/dev/shm'
+      - 'crawl4ai_data:/app/data'
+    restart: unless-stopped
+
+volumes:
+  crawl4ai_data: null

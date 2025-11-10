@@ -9,3 +9,13 @@ wheels/
 # Virtual environments
 .venv
 docs
+old
+static
+templates
+.venv
+app.py
+test.py
+mcp_capabilities.md
+somefile.txt
+uv.lock
+digest.txt

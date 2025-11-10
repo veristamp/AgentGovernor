@@ -1,0 +1,69 @@
+version: 1
+
+vars:
+  workdir: "./_wf_out_dag"
+  greeting: "hello-dag-workflow"
+
+# 'steps' is now a DICTIONARY (a map) of step IDs.
+steps:
+  
+  # --- Parallelizable "root" steps ---
+
+  # This step has no 'depends_on', so it runs immediately.
+  create_dir:
+    tool: filesystem.create_directory
+    args:
+      path: "${vars.workdir}"
+
+  # This step also has no 'depends_on', so it runs immediately
+  # in PARALLEL with 'create_dir'.
+  run_echo:
+    tool: terminal.run_command
+    args: { command: "echo 'Parallel echo says ${vars.greeting}'", timeout: 3 }
+
+  # --- Sequential steps (dependent) ---
+
+  # This step MUST wait for 'create_dir' to finish.
+  write_file_A:
+    tool: filesystem.write_file
+    args:
+      path: "${vars.workdir}/a.txt"
+      content: "File A"
+    depends_on:
+      - "create_dir"
+
+  # This step MUST wait for 'create_dir' to finish.
+  # It will run in PARALLEL with 'write_file_A'.
+  write_file_B:
+    tool: filesystem.write_file
+    args:
+      path: "${vars.workdir}/b.txt"
+      content: "File B"
+    depends_on:
+      - "create_dir"
+
+  # --- A "join" step ---
+  
+  # This step MUST wait for 'write_file_A', 'write_file_B', AND 'run_echo'
+  # to all finish before it can run.
+  list_files:
+    tool: filesystem.list_directory
+    args:
+      path: "${vars.workdir}"
+    depends_on:
+      - "write_file_A"
+      - "write_file_B"
+      - "run_echo"
+  
+  # --- Using output from another step ---
+
+  # This final step waits for 'list_files' and 'run_echo'
+  # and uses their output in its log message.
+  final_log:
+    log: |
+      Workflow finished.
+      Echo output was: ${steps.run_echo.output}
+      Directory listing: ${steps.list_files.output}
+    depends_on:
+      - "list_files"
+      - "run_echo" # Dependency is redundant (list_files implies it), but safe

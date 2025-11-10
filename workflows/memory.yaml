@@ -1,0 +1,53 @@
+version: 1
+
+vars:
+  entity_alice: "Alice"
+  entity_bob: "Bob"
+
+# This workflow tests the 'memory' server.
+# It creates entities, then relations.
+# After, it forks into 'search_nodes' and 'visualize_graph' in parallel.
+steps:
+
+  create_entities:
+    tool: memory.create_entities
+    args:
+      entities:
+        - name: "${vars.entity_alice}"
+          entityType: "Person"
+          observations: ["Works in software"]
+        - name: "${vars.entity_bob}"
+          entityType: "Person"
+          observations: ["Works in hardware"]
+
+  create_relation:
+    tool: memory.create_relations
+    args:
+      relations:
+        - from: "${vars.entity_alice}"
+          to: "${vars.entity_bob}"
+          relationType: "KNOWS"
+    depends_on:
+      - "create_entities"
+
+  search_for_alice:
+    tool: memory.search_nodes
+    args:
+      query: "${vars.entity_alice}"
+    depends_on:
+      - "create_relation"
+
+  visualize:
+    tool: memory.visualize_graph
+    args: {}
+    depends_on:
+      - "create_relation"
+
+  log_results:
+    log: |
+      Memory graph test complete.
+      Search for Alice: ${steps.search_for_alice.output}
+      Graph visualization created (check MCP output).
+    depends_on:
+      - "search_for_alice"
+      - "visualize"

@@ -1,0 +1,29 @@
+version: 1
+
+vars:
+  library_name: "react"
+  doc_topic: "hooks"
+
+# This workflow tests the 'context7' server.
+# It's a simple, linear A -> B -> C dependency chain.
+steps:
+
+  resolve_id:
+    tool: "context7.resolve-library-id"
+    args:
+      libraryName: "${vars.library_name}"
+
+  get_docs:
+    tool: "context7.get-library-docs"
+    args:
+      # NOTE: This assumes the direct output of resolve-id is the string.
+      # If it's a JSON object, this might need to be e.g., ${steps.resolve_id.id}
+      context7CompatibleLibraryID: "${steps.resolve_id.output}"
+      topic: "${vars.doc_topic}"
+    depends_on:
+      - "resolve_id"
+
+  log_docs:
+    log: "Context7 test complete. Got docs for ${vars.library_name}."
+    depends_on:
+      - "get_docs"
