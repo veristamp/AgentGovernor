@@ -327,7 +327,7 @@ async def _execute_single_step(
 
         # --- 3. Store results and signal completion ---
         log.info("Step '%s' finished.", step_id)
-        global_vars["steps"][step_id] = result
+        global_vars["steps"][step_id] = {"output": result}
         global_vars["last_output"] = result # Update for sequential blocks
 
     except Exception as e:

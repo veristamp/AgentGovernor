@@ -1,3 +1,4 @@
+description: "Find the Context7 library ID for 'react' and then get the documentation for the 'hooks' topic."
 version: 1
 
 vars:

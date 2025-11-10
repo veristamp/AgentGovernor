@@ -1,3 +1,4 @@
+description: "Test the memory server: create two entities 'Alice' and 'Bob', add a 'KNOWS' relation, then search for 'Alice' and visualize the graph."
 version: 1
 
 vars:

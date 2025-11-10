@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
-Script to ingest tools from tools_schema.json into a Qdrant vector database
-with hybrid embeddings (dense + sparse).
-
-** MODIFIED TO USE SHARED Agent.embedder and Agent.config **
+Script to ingest tools (from tools_schema.json) AND
+workflows (from a directory) into separate Qdrant vector databases.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import sys
-from typing import Any, Dict, List
+import yaml
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 from uuid import uuid5, NAMESPACE_URL
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
@@ -34,6 +33,7 @@ def ensure_collection(
     shard_number: int = 2,
     bulk_ingest: bool = False,
 ) -> None:
+    """Creates a Qdrant collection if it doesn't exist."""
     def _create():
         print(f"[ensure_collection] Creating collection '{name}' (dim={dense_dim})")
         client.create_collection(
@@ -49,11 +49,11 @@ def ensure_collection(
             optimizers_config=qm.OptimizersConfigDiff(indexing_threshold=0) if bulk_ingest else None,
         )
 
-
     try:
         info = client.get_collection(collection_name=name)
     except Exception as e1:
         try:
+            # Fallback for different client versions
             info = client.http.collections_api.get_collection(collection_name=name)
         except Exception as e2:
             if "not found" in str(e1).lower() or "not found" in str(e2).lower():
@@ -63,6 +63,7 @@ def ensure_collection(
                 print(f"Warning: Could not verify vector dim for '{name}': {e1} / {e2}")
                 info = None
 
+    # Check dimension mismatch if collection already exists
     if info:
         cfg = getattr(getattr(getattr(info, "config", None), "params", None), "vectors", None)
         dense_params = None
@@ -82,223 +83,224 @@ def ensure_collection(
                 f"new data has {dense_dim}. Use a different collection or re-index."
             )
 
-DEFAULT_QDRANT_URL = agent_config.QDRANT_URL
-DEFAULT_COLLECTION_NAME = agent_config.QDRANT_COLLECTION_NAME
-DEFAULT_TOOLS_FILE = "tools_schema.json"
-DEFAULT_EMBED_MODEL = agent_config.DENSE_EMBED_MODEL
-DEFAULT_SPARSE_MODEL = agent_config.SPARSE_EMBED_MODEL # Added
-UPSERT_BATCH_SIZE = 64 # This is now unused by upsert, but harmless
+# --- Config (Hardcoded) ---
+QDRANT_URL = agent_config.QDRANT_URL
+TOOLS_COLLECTION_NAME = agent_config.QDRANT_COLLECTION_NAME  # "mcp_tools"
+WORKFLOW_COLLECTION_NAME = "mcp_workflows"  # New collection for workflows
+TOOLS_FILE = "tools_schema.json"
+WORKFLOW_DIR = "workflows"
+EMBED_MODEL = agent_config.DENSE_EMBED_MODEL
+SPARSE_MODEL = agent_config.SPARSE_EMBED_MODEL
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s ingest_tools :: %(message)s"
+    format="%(asctime)s %(levelname)s ingest :: %(message)s"
 )
-log = logging.getLogger("ingest_tools")
+log = logging.getLogger("ingest")
 
+# --- Data Loading (New Unified Structure) ---
 
-def load_tools(tools_file: str) -> List[Dict[str, Any]]:
-    """Loads the tool schema list from the JSON file."""
+# This tuple defines the unified data structure:
+# (id_string, embed_text, payload_dictionary)
+ItemData = Tuple[str, str, Dict[str, Any]]
+
+def load_tools_data(tools_file: str) -> List[ItemData]:
+    """Loads tools from the JSON file."""
+    items: List[ItemData] = []
     try:
         with open(tools_file, "r", encoding="utf-8") as f:
             tools = json.load(f)
         if not isinstance(tools, list):
-            log.error("Error: %s should contain a JSON list of tools.", tools_file)
+            log.error(f"Error: {tools_file} should contain a JSON list of tools.")
             return []
-        log.info("Loaded %d tools from %s", len(tools), tools_file)
-        return tools
     except FileNotFoundError:
-        log.error("Error: Tools file not found at %s", tools_file)
+        log.error(f"Error: Tools file not found at {tools_file}")
         return []
     except json.JSONDecodeError:
-        log.error("Error: Could not decode JSON from %s", tools_file)
+        log.error(f"Error: Could not decode JSON from {tools_file}")
         return []
 
-def prepare_tool_documents(tools: List[Dict[str, Any]]) -> List[str]:
-    """
-    Creates a single text document for each tool, which will be used
-    to generate the embeddings.
-    """
-    documents = []
     for tool in tools:
-        qname = tool.get("qualified_name", "unknown.tool")
-        desc = tool.get("description", "No description.")
+        qname = tool.get("qualified_name")
+        if not qname:
+            continue
+
+        pid = str(uuid5(NAMESPACE_URL, qname))
         
+        desc = tool.get("description", "No description.")
         schema = tool.get("schema", {})
         props = schema.get("properties", {})
-        arg_list = []
-        if props:
-            for arg_name, arg_details in props.items():
-                arg_type = arg_details.get('type', 'any')
-                arg_desc = arg_details.get('description', '')
-                arg_list.append(f"- {arg_name} ({arg_type}): {arg_desc}")
+        arg_list = [f"{name} ({details.get('type', 'any')})" for name, details in props.items()]
+        arg_text = f"Arguments: {', '.join(arg_list)}" if arg_list else "No arguments."
+        doc_text = f"Tool: {qname}\nDescription: {desc}\n{arg_text}"
         
-        arg_text = "\n".join(arg_list)
-        if not arg_text:
-            arg_text = "No arguments."
+        payload = {
+            "type": "tool",
+            "qualified_name": qname,
+            "server_prefix": tool.get("server_prefix"),
+            "name": tool.get("name"),
+            "description": desc,
+            "schema_json": json.dumps(schema),
+            "embed_text": doc_text
+        }
+        items.append((pid, doc_text, payload))
+        
+    log.info(f"Loaded {len(items)} tools from {tools_file}")
+    return items
 
-        doc = (
-            f"Tool: {qname}\n"
-            f"Description: {desc}\n"
-            f"Arguments:\n{arg_text}"
-        )
-        documents.append(doc)
-    
-    return documents
+def load_workflows_data(workflow_dir: str) -> List[ItemData]:
+    """Loads workflows from the YAML directory."""
+    items: List[ItemData] = []
+    workflow_path = Path(workflow_dir)
+    if not workflow_path.is_dir():
+        log.warning(f"Workflow directory not found at {workflow_dir}. Skipping.")
+        return []
+        
+    for yaml_file in workflow_path.glob("*.yaml"):
+        try:
+            with open(yaml_file, "r", encoding="utf-8") as f:
+                content = f.read()
+                data = yaml.safe_load(content)
+                if not isinstance(data, dict):
+                    continue
+            
+            pid = str(uuid5(NAMESPACE_URL, str(yaml_file.resolve())))
+            doc_text = data.get("description")
+            
+            if not doc_text:
+                log.warning(f"Skipping {yaml_file.name}: missing top-level 'description' key.")
+                continue
+            
+            payload = {
+                "type": "workflow",
+                "description": doc_text,
+                "yaml_content": content,
+                "source_file": yaml_file.name,
+                "embed_text": doc_text
+            }
+            items.append((pid, doc_text, payload))
+            
+        except yaml.YAMLError as e:
+            log.error(f"Error parsing YAML from {yaml_file.name}: {e}")
+        except Exception as e:
+            log.error(f"Error loading {yaml_file.name}: {e}")
+            
+    log.info(f"Loaded {len(items)} workflows from {workflow_dir}")
+    return items
 
-def prepare_qdrant_points(
-    tools: List[Dict[str, Any]],
-    documents: List[str],
-    dense_vecs: List[List[float]],
-    sparse_vecs: List[Dict]
+def prepare_and_embed(
+    items: List[ItemData],
+    dense_embedder: Embedder,
+    sparse_embedder: SparseBM25,
 ) -> List[qm.PointStruct]:
-    """
-    Combines tools, documents, and vectors into Qdrant PointStruct objects.
-    """
+    """Helper function to run embedding and create Qdrant points."""
+    
+    documents = [item[1] for item in items]
+    
+    log.info(f"Generating dense embeddings for {len(documents)} items...")
+    dense_vectors = dense_embedder.embed(documents)
+    
+    log.info(f"Generating sparse embeddings for {len(documents)} items...")
+    sparse_vectors = sparse_embedder.embed(documents)
+    
+    log.info("Preparing Qdrant points...")
     points = []
-    for idx, tool in enumerate(tools):
-        dense_vec = dense_vecs[idx]
-        sparse_vec_data = sparse_vecs[idx]
+    for idx, item_data in enumerate(items):
+        pid, doc_text, payload = item_data
+        
+        dense_vec = dense_vectors[idx]
+        sparse_vec_data = sparse_vectors[idx]
         
         bm25 = qm.SparseVector(
             indices=list(map(int, sparse_vec_data["indices"])),
             values=list(map(float, sparse_vec_data["values"]))
         )
         
-        qname = tool["qualified_name"]
-        pid = str(uuid5(NAMESPACE_URL, qname))
-        
-        payload = {
-            "qualified_name": qname,
-            "server_prefix": tool.get("server_prefix"),
-            "name": tool.get("name"),
-            "description": tool.get("description"),
-            "schema_json": json.dumps(tool.get("schema", {})),
-            "embed_text": documents[idx]
-        }
-        
         points.append(qm.PointStruct(
             id=pid,
             vector={"dense": dense_vec, "bm25": bm25},
             payload=payload
         ))
-    
     return points
 
+# --- Main ---
+
 def main():
-    """Main script entrypoint."""
-    parser = argparse.ArgumentParser(
-        description="Ingest MCP tools into Qdrant for RAG.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument(
-        "--qdrant-url",
-        type=str,
-        default=DEFAULT_QDRANT_URL,
-        help="URL for the Qdrant instance."
-    )
-    parser.add_argument(
-        "--collection-name",
-        type=str,
-        default=DEFAULT_COLLECTION_NAME,
-        help="Name of the Qdrant collection to use."
-    )
-    parser.add_argument(
-        "--tools-file",
-        type=str,
-        default=DEFAULT_TOOLS_FILE,
-        help="Path to the tools_schema.json file."
-    )
-    parser.add_argument(
-        "--model-name",
-        type=str,
-        default=DEFAULT_EMBED_MODEL,
-        help="Name of the dense embedding model to use (e.g., 'BAAI/bge-base-en-v1.5')."
-    )
-    parser.add_argument(
-        "--sparse-model-name",
-        type=str,
-        default=DEFAULT_SPARSE_MODEL,
-        help="Name of the sparse embedding model to use (e.g., 'Qdrant/bm25')."
-    )
-    args = parser.parse_args()
-
-    # 1. Load Tools
-    tools = load_tools(args.tools_file)
-    if not tools:
-        sys.exit(1)
-
-    # 2. Initialize Embedders
+    """Main script entrypoint. All config is hardcoded above."""
+    
+    # --- 1. Init ---
     log.info("Initializing embedders...")
     try:
-        dense_embedder = Embedder(model_name=args.model_name, use_gpu=True)
-        sparse_embedder = SparseBM25(model_name=args.sparse_model_name)
-        log.info(
-            "Dense embedder '%s' ready (dim=%d). Sparse embedder '%s' ready.",
-            args.model_name, dense_embedder.dim, args.sparse_model_name
-        )
+        dense_embedder = Embedder(model_name=EMBED_MODEL, use_gpu=True)
+        sparse_embedder = SparseBM25(model_name=SPARSE_MODEL)
     except Exception as e:
-        log.error("Error initializing embedders: %s", e)
+        log.error(f"Error initializing embedders: {e}")
         sys.exit(1)
 
-    # 3. Initialize Qdrant Client and Collection
-    log.info("Connecting to Qdrant at %s", args.qdrant_url)
+    log.info(f"Connecting to Qdrant at {QDRANT_URL}")
     try:
-        client = QdrantClient(url=args.qdrant_url)
+        client = QdrantClient(url=QDRANT_URL)
         client.get_collections() 
     except Exception as e:
-        log.error(
-            "Error: Could not connect to Qdrant at %s. Is it running?",
-            args.qdrant_url
-        )
-        log.error(e)
+        log.error(f"Error: Could not connect to Qdrant at {QDRANT_URL}.")
         sys.exit(1)
 
-    log.info("Ensuring collection '%s' exists...", args.collection_name)
-    try:
-        ensure_collection(
-            client,
-            name=args.collection_name,
-            dense_dim=dense_embedder.dim,
-            bulk_ingest=True
-        )
-    except Exception as e:
-        log.error("Error ensuring collection: %s", e)
-        sys.exit(1)
+    # --- 2. Process Tools ---
+    tool_items = load_tools_data(TOOLS_FILE)
+    if tool_items:
+        log.info(f"--- Processing {len(tool_items)} Tools ---")
+        try:
+            ensure_collection(
+                client,
+                name=TOOLS_COLLECTION_NAME,
+                dense_dim=dense_embedder.dim,
+                bulk_ingest=True
+            )
+            
+            tool_points = prepare_and_embed(tool_items, dense_embedder, sparse_embedder)
+            
+            log.info(f"Upserting {len(tool_points)} tool points to collection '{TOOLS_COLLECTION_NAME}'...")
+            client.upsert(
+                collection_name=TOOLS_COLLECTION_NAME,
+                points=tool_points,
+                wait=True
+            )
+            log.info("Successfully upserted tools.")
+        
+        except Exception as e:
+            log.error(f"Error during tool upsert: {e}", exc_info=True)
+    else:
+        log.info("No tools found to ingest.")
 
-    # 4. Prepare and Embed Documents
-    log.info("Preparing text documents for embedding...")
-    documents = prepare_tool_documents(tools)
-    
-    log.info("Generating dense embeddings for %d tools...", len(documents))
-    dense_vectors = dense_embedder.embed(documents)
-    
-    log.info("Generating sparse embeddings for %d tools...", len(documents))
-    sparse_vectors = sparse_embedder.embed(documents)
-    
-    # 5. Prepare Qdrant Points
-    log.info("Preparing Qdrant points...")
-    points = prepare_qdrant_points(tools, documents, dense_vectors, sparse_vectors)
+    # --- 3. Process Workflows ---
+    workflow_items = load_workflows_data(WORKFLOW_DIR)
+    if workflow_items:
+        log.info(f"--- Processing {len(workflow_items)} Workflows ---")
+        try:
+            ensure_collection(
+                client,
+                name=WORKFLOW_COLLECTION_NAME,
+                dense_dim=dense_embedder.dim,
+                bulk_ingest=True
+            )
+            
+            workflow_points = prepare_and_embed(workflow_items, dense_embedder, sparse_embedder)
+            
+            log.info(f"Upserting {len(workflow_points)} workflow points to collection '{WORKFLOW_COLLECTION_NAME}'...")
+            client.upsert(
+                collection_name=WORKFLOW_COLLECTION_NAME,
+                points=workflow_points,
+                wait=True
+            )
+            log.info("Successfully upserted workflows.")
+        
+        except Exception as e:
+            log.error(f"Error during workflow upsert: {e}", exc_info=True)
+    else:
+        log.info("No workflows found to ingest.")
 
-    # 6. Upsert to Qdrant
-    log.info("Upserting %d points to collection '%s'...",
-             len(points), args.collection_name
-    )
-    try:
-        # --- THIS IS THE FIX ---
-        # Removed 'batch_size' and 'parallel' as they are not
-        # valid arguments for the 'upsert' method.
-        client.upsert(
-            collection_name=args.collection_name,
-            points=points,
-            wait=True
-        )
-        # --- END FIX ---
-        log.info("Successfully upserted all tools.")
-    except Exception as e:
-        log.error("Error during Qdrant upsert: %s", e)
-        sys.exit(1)
+    log.info("--- Ingestion Complete ---")
 
-    log.info("Ingestion complete.")
 
 if __name__ == "__main__":
     main()

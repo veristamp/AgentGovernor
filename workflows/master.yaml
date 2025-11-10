@@ -1,3 +1,4 @@
+description: "Master workflow: Get React docs, get SDK function code, create a directory, write the docs to a file, and save the code info to memory."
 version: 1
 
 vars:

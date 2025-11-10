@@ -9,6 +9,7 @@ dotenv.load_dotenv()
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "mcp_tools")
 RERANKER_MODEL_NAME = os.getenv("RERANKER_MODEL_NAME", "jinaai/jina-reranker-v1-turbo-en")
+QDRANT_WORKFLOW_COLLECTION_NAME = os.getenv("QDRANT_WORKFLOW_COLLECTION_NAME", "mcp_workflows")
 # --- Embedding Model Configuration ---
 # This should match the model used in upsert.py
 DENSE_EMBED_MODEL = os.getenv("DENSE_EMBED_MODEL", "BAAI/bge-base-en-v1.5")

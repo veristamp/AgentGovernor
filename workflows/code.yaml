@@ -1,3 +1,4 @@
+description: "Analyze the mcp_client repo: get the folder tree, find connections for 'run_tool', and get the source code for the '_execute_single_step' function."
 version: 1
 
 vars:

@@ -1,179 +1,22 @@
 #!/usr/bin/env python3
 """
 Module for building the RICECO prompt for the planner LLM.
+
+** MODIFIED to dynamically retrieve workflow examples **
 """
 from __future__ import annotations
 
 import json
 import textwrap
+import logging
 from typing import Any, Dict, List
 
-# --- EXAMPLES (Unchanged) ---
-EXAMPLE_A = """
-Example A:
-```yaml
-version: 1
-vars:
-  workdir: "./_test_workflow"
-steps:
-  setup_dir:
-    tool: filesystem.create_directory
-    args:
-      path: "${vars.workdir}"
-  
-  list_files:
-    tool: filesystem.list_directory
-    args:
-      path: "."
-    save_as: "file_list"
+# --- Import the new workflow retriever ---
+from Agent.workflow_retriever import find_relevant_workflows
 
-  write_report:
-    tool: filesystem.write_file
-    args:
-      path: "${vars.workdir}/report.txt"
-      content: "Files found: ${steps.list_files.output}"
-    depends_on:
-      - "setup_dir"
-      - "list_files"
-```
-"""
+# Get the planner's logger
+log = logging.getLogger("planner")
 
-EXAMPLE_B = """
-Example B:
-```yaml
-version: 1
-vars:
-  workdir: "./_test_workflow_5"
-
-# This workflow tests the 'if', 'loop', and 'set' logic blocks as
-# nodes within the DAG.
-steps:
-
-  setup_dir:
-    tool: filesystem.create_directory
-    args:
-      path: "${vars.workdir}"
-
-  check_os:
-    set:
-      var: "is_windows"
-      value: {"contains": [{"var": "env.OS"}, "Windows"]}
-
-  run_if_block:
-    if: {"var": "vars.is_windows"}
-    then:
-      - log: "This is a Windows environment."
-    else:
-      - log: "This is a Linux/macOS environment."
-    depends_on:
-      - "check_os"
-
-  loop_create_files:
-    loop:
-      var: "filename"
-      over: ["file_a.log", "file_b.log", "file_c.log"]
-    do:
-      - tool: filesystem.write_file
-        args:
-          path: "${vars.workdir}/${filename}"
-          content: "This is log file ${filename}"
-    depends_on:
-      - "setup_dir"
-  
-  final_log:
-    log: "Logic and Loop test complete. Check ${vars.workdir}."
-    depends_on:
-      - "run_if_block"
-      - "loop_create_files"
-```
-"""
-
-EXAMPLE_C = """
-Example C:
-```yaml
-version: 1
-vars:
-  # --- Input Vars (what an LLM would customize) ---
-  doc_library: "react"
-  doc_topic: "hooks"
-  code_target_function: "run_tool"
-  code_target_path: "mcp_client/executioner.py"
-  output_dir: "./_master_workflow_output"
-
-steps:
-
-  # --- Phase 1: Run parallel "fetch" tasks ---
-
-  get_react_docs:
-    tool: "context7.resolve-library-id"
-    args:
-      libraryName: "${vars.doc_library}"
-
-  get_code_function:
-    tool: "modelcontextprotocol-python-sdk.get-code"
-    args:
-      name: "${vars.code_target_function}"
-      path: "${vars.code_target_path}"
-
-  get_code_tree:
-    tool: "modelcontextprotocol-python-sdk.folder-tree-structure"
-    args:
-      path: "mcp_client"
-
-  setup_dir:
-    tool: filesystem.create_directory
-    args:
-      path: "${vars.output_dir}"
-
-  # --- Phase 2: Run tasks that depend on Phase 1 ---
-
-  write_docs_to_file:
-    tool: filesystem.write_file
-    args:
-      path: "${vars.output_dir}/react_docs_id.txt"
-      # This step chains data from a DIFFERENT server (context7)
-      content: "Docs for ${vars.doc_library}: ${steps.get_react_docs.output}"
-    depends_on:
-      - "get_react_docs"
-      - "setup_dir" # Must wait for the dir to exist
-
-  create_memory_entity:
-    tool: memory.create_entities
-    args:
-      entities:
-        - name: "CodeFunction"
-          entityType: "WorkflowTest"
-          # This step chains data from the SDK server
-          observations: ["Fetched code for ${vars.code_target_function}"]
-    depends_on:
-      - "get_code_function" # Must wait for the code to be fetched
-
-  # --- Phase 3: A "Join" step ---
-  # This step must wait for filesystem, memory, and sdk tasks to all finish.
-
-  list_final_directory:
-    tool: terminal.run_command
-    args:
-      command: "ls -R ${vars.output_dir}"
-    depends_on:
-      - "write_docs_to_file"    # Depends on filesystem
-      - "create_memory_entity"  # Depends on memory
-      - "get_code_tree"         # Depends on sdk
-
-  # --- Phase 4: Final Log ---
-
-  final_log:
-    log: |
-      MASTER WORKFLOW COMPLETE.
-      - Context7 Docs: ${steps.get_react_docs.output}
-      - File Written: ${steps.write_docs_to_file.output}
-      - Terminal Output: ${steps.list_final_directory.output}
-    depends_on:
-      - "list_final_directory"
-```
-"""
-
-HARDCODED_EXAMPLES = [EXAMPLE_A, EXAMPLE_B, EXAMPLE_C]
 
 def _format_schema(schema: Dict[str, Any], indent: int = 2) -> str:
     """
@@ -185,7 +28,28 @@ def _format_schema(schema: Dict[str, Any], indent: int = 2) -> str:
     
     props = schema.get("properties", {})
     if not props:
-        return ""
+        # Handle schemas defined with $defs (like memory.create_entities)
+        defs = schema.get("$defs", {})
+        if defs:
+            for def_name, def_schema in defs.items():
+                # Attempt to find the main properties within defs
+                def_props = def_schema.get("properties")
+                if def_props:
+                    # Found properties, format them
+                    req_args = set(def_schema.get("required", []))
+                    for arg_name, details in def_props.items():
+                        lines.append(f"{indent_str}- {arg_name}: ({details.get('type', 'any')}){' (required)' if arg_name in req_args else ''}")
+                
+                # Check for array items referencing defs
+                for prop_name, prop_details in schema.get("properties", {}).items():
+                    if prop_details.get("items", {}).get("$ref") == f"#/$defs/{def_name}":
+                        lines.insert(0, f"{indent_str}- {prop_name}: (array of objects)")
+                        lines.insert(1, f"{indent_str}  - object fields:")
+            
+            if lines:
+                return "\n".join(lines)
+
+        return "" # No properties found
 
     req_args = set(schema.get("required", []))
     
@@ -196,10 +60,19 @@ def _format_schema(schema: Dict[str, Any], indent: int = 2) -> str:
         if arg_type == "object" and "properties" in details:
             lines.append(f"{indent_str}- {arg_name}:{req_str} (object):")
             lines.append(_format_schema(details, indent + 1))
-        elif arg_type == "array" and "items" in details.get("items", {}):
-            item_details = details["items"]
+        elif arg_type == "array":
+            item_details = details.get("items", {})
             item_type = item_details.get("type", "any")
-            if item_type == "object":
+            
+            # Check if array items are objects defined in $defs
+            ref = item_details.get("$ref")
+            if ref and ref.startswith("#/$defs/"):
+                def_name = ref.split('/')[-1]
+                def_schema = schema.get("$defs", {}).get(def_name, {})
+                lines.append(f"{indent_str}- {arg_name}:{req_str} (array of objects):")
+                lines.append(f"{indent_str}  - object fields:")
+                lines.append(_format_schema(def_schema, indent + 2))
+            elif item_type == "object" and "properties" in item_details:
                 lines.append(f"{indent_str}- {arg_name}:{req_str} (array of objects):")
                 lines.append(f"{indent_str}  - object fields:")
                 lines.append(_format_schema(item_details, indent + 2))
@@ -273,7 +146,8 @@ Available Tools:
 
 Workflow YAML Schema:
 - The top level must be a map containing `version: 1` and `steps:`.
-- `vars:` is an optional map for variables.
+- `description:` (optional) a human-readable goal for the workflow.
+- `vars:` (optional) a map for variables.
 - `steps:` is a map where each key is a unique *step_id*.
 - Each step is a map containing a `tool:` name, `args:`, and optional `depends_on:`.
 - `args:` are interpolated: `"${{vars.var_name}}"` or `"${{steps.step_id.output}}"`. **THIS IS A STRICT REQUIREMENT.**
@@ -282,8 +156,26 @@ Workflow YAML Schema:
 - `log:` can be used instead of `tool:` to print a message.
 """
 
-    # --- E: Examples ---
-    examples = "\n".join(HARDCODED_EXAMPLES)
+    # --- E: Examples (NEW: Dynamic RAG) ---
+    log.info("Retrieving dynamic workflow examples...")
+    try:
+        # Call the new retriever
+        workflow_examples = find_relevant_workflows(goal, top_k=3)
+    except Exception as e:
+        log.error(f"Failed to retrieve workflow examples: {e}. Falling back to no examples.")
+        workflow_examples = []
+    
+    if workflow_examples:
+        example_lines = ["EXAMPLES:", "---"]
+        for i, yaml_example in enumerate(workflow_examples, 1):
+            # Clean up the YAML string for insertion
+            clean_yaml = textwrap.dedent(yaml_example).strip()
+            example_lines.append(f"Example {i} (from a similar past workflow):\n```yaml\n{clean_yaml}\n```\n---")
+        examples = "\n".join(example_lines)
+    else:
+        log.warning("No relevant workflow examples found. Proceeding without examples.")
+        examples = "EXAMPLES:\n(No relevant examples found. You must create a plan from scratch.)"
+
 
     # --- CO: Constraints ---
     constraints = """
@@ -320,53 +212,3 @@ steps:
 {output_format}
 """
     return textwrap.dedent(full_prompt)
-
-if __name__ == '__main__':
-    # Example test
-    print("--- Testing Prompt Builder ---")
-    test_tools = [
-        {
-            "qualified_name": "filesystem.write_file",
-            "description": "Writes text content to a file.",
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The file to write to."},
-                    "content": {"type": "string", "description": "The text to write."}
-                },
-                "required": ["path", "content"]
-            }
-        },
-        {
-            "qualified_name": "memory.create_entities",
-            "description": "Create multiple new entities in the knowledge graph",
-            "schema": {
-                "$defs": {
-                    "Entity": {
-                        "properties": {
-                            "name": {"description": "The name of the entity", "type": "string"},
-                            "entityType": {"description": "The type of the entity", "type": "string"},
-                            "observations": {"description": "...", "type": "array", "items": {"type": "string"}}
-                        },
-                        "required": ["name", "entityType", "observations"],
-                        "type": "object"
-                    }
-                },
-                "properties": {
-                    "entities": {
-                        "items": {"$ref": "#/$defs/Entity"},
-                        "title": "Entities",
-                        "type": "array"
-                    }
-                },
-                "required": ["entities"]
-            }
-        }
-    ]
-    test_goal = "Save 'hello' to test.txt and create a memory entity."
-    
-    prompt = build_planner_prompt(test_goal, test_tools)
-    
-    print(prompt)
-    print("\n--- Prompt Length ---")
-    print(f"{len(prompt)} characters")

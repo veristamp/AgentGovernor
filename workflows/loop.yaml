@@ -1,3 +1,4 @@
+description: "Test workflow logic: check the OS, run an if/else block, and loop to create three log files in a new directory."
 version: 1
 
 vars:

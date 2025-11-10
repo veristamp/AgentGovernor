@@ -1,0 +1,30 @@
+version: 1
+description: find the model context protocol python client library and then save it
+  to a local file name api.md
+vars:
+  library_name: model context protocol python client
+  output_file: api.md
+steps:
+  resolve_library_id:
+    tool: context7.resolve-library-id
+    args:
+      libraryName: ${vars.library_name}
+  get_library_docs:
+    tool: context7.get-library-docs
+    args:
+      context7CompatibleLibraryID: ${steps.resolve_library_id.output}
+      topic: api
+    depends_on:
+    - resolve_library_id
+  save_docs_to_file:
+    tool: filesystem.write_file
+    args:
+      path: ${vars.output_file}
+      content: ${steps.get_library_docs.output}
+    depends_on:
+    - get_library_docs
+  log_completion:
+    log: Successfully saved Model Context Protocol Python client library API documentation
+      to ${vars.output_file}
+    depends_on:
+    - save_docs_to_file
