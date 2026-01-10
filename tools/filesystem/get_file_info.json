@@ -1,0 +1,19 @@
+{
+  "qualified_name": "filesystem.get_file_info",
+  "server_prefix": "filesystem",
+  "name": "get_file_info",
+  "description": "Retrieve detailed metadata about a file or directory.\nIncludes size, timestamps, and permissions. Only works within allowed directories.",
+  "schema": {
+    "properties": {
+      "path": {
+        "title": "Path",
+        "type": "string"
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "title": "get_file_infoArguments",
+    "type": "object"
+  }
+}

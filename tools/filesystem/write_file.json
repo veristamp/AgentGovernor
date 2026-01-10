@@ -1,0 +1,34 @@
+{
+  "qualified_name": "filesystem.write_file",
+  "server_prefix": "filesystem",
+  "name": "write_file",
+  "description": "Create or overwrite a file with new content asynchronously.\n\nArgs:\n    path: Path to the file\n    content: Content to write (string or base64-encoded for binary)\n    encoding: 'utf-8' for text files (default), 'base64' for binary files\n\nFor binary files, pass base64-encoded content and set encoding='base64'.\nOverwrites existing files without warning. Only works within allowed directories.",
+  "schema": {
+    "properties": {
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "encoding": {
+        "default": "utf-8",
+        "title": "Encoding",
+        "type": "string"
+      },
+      "max_bytes": {
+        "default": 2000000,
+        "title": "Max Bytes",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "path",
+      "content"
+    ],
+    "title": "write_fileArguments",
+    "type": "object"
+  }
+}

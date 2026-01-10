@@ -1,0 +1,47 @@
+{
+  "qualified_name": "memory.add_observations",
+  "server_prefix": "memory",
+  "name": "add_observations",
+  "description": "Add new observations to existing entities in the knowledge graph",
+  "schema": {
+    "$defs": {
+      "ObservationUpdate": {
+        "properties": {
+          "entityName": {
+            "description": "The name of the entity to add the observations to",
+            "title": "Entityname",
+            "type": "string"
+          },
+          "contents": {
+            "description": "An array of observation contents to add",
+            "items": {
+              "type": "string"
+            },
+            "title": "Contents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entityName",
+          "contents"
+        ],
+        "title": "ObservationUpdate",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "observations": {
+        "items": {
+          "$ref": "#/$defs/ObservationUpdate"
+        },
+        "title": "Observations",
+        "type": "array"
+      }
+    },
+    "required": [
+      "observations"
+    ],
+    "title": "add_observationsArguments",
+    "type": "object"
+  }
+}

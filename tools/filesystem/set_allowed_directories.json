@@ -1,0 +1,22 @@
+{
+  "qualified_name": "filesystem.set_allowed_directories",
+  "server_prefix": "filesystem",
+  "name": "set_allowed_directories",
+  "description": "Update the list of allowed directories at runtime.",
+  "schema": {
+    "properties": {
+      "directories": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Directories",
+        "type": "array"
+      }
+    },
+    "required": [
+      "directories"
+    ],
+    "title": "set_allowed_directoriesArguments",
+    "type": "object"
+  }
+}

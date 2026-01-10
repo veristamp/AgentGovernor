@@ -1,0 +1,47 @@
+{
+  "qualified_name": "memory.delete_observations",
+  "server_prefix": "memory",
+  "name": "delete_observations",
+  "description": "Delete specific observations from entities in the knowledge graph",
+  "schema": {
+    "$defs": {
+      "Deletion": {
+        "properties": {
+          "entityName": {
+            "description": "The name of the entity containing the observations",
+            "title": "Entityname",
+            "type": "string"
+          },
+          "observations": {
+            "description": "An array of observations to delete",
+            "items": {
+              "type": "string"
+            },
+            "title": "Observations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entityName",
+          "observations"
+        ],
+        "title": "Deletion",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "deletions": {
+        "items": {
+          "$ref": "#/$defs/Deletion"
+        },
+        "title": "Deletions",
+        "type": "array"
+      }
+    },
+    "required": [
+      "deletions"
+    ],
+    "title": "delete_observationsArguments",
+    "type": "object"
+  }
+}

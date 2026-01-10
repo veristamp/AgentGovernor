@@ -271,11 +271,15 @@ class MCPClientManager:
 
         try:
             if kind == "tool":
-                result = await session.call_tool(base, arguments=args)
-                # Normalize content to a list of blocks
-                # execute_action() tool path
+                # Call the tool once
                 call = session.call_tool(base, arguments=args)
-                content = await asyncio.wait_for(call, timeout=args.get("_timeout", 60))
+                result = await asyncio.wait_for(call, timeout=args.get("_timeout", 60))
+                
+                # Result is a CallToolResult with .content (list of content blocks)
+                content = getattr(result, "content", []) or []
+                if not content:
+                    # Fallback: maybe result is already the content list
+                    content = result if isinstance(result, list) else []
 
                 parts: List[str] = []
                 structured_output_found = False

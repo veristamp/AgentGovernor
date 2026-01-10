@@ -23,3 +23,6 @@ services:
     # This node joins the cluster by bootstrapping against the first node's URI.
     command: ["./qdrant", "--bootstrap", "http://qdrant-1:6335"]
 
+volumes:
+  qdrant_data:
+    driver: local

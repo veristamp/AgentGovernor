@@ -1,0 +1,53 @@
+{
+  "qualified_name": "memory.create_entities",
+  "server_prefix": "memory",
+  "name": "create_entities",
+  "description": "Create multiple new entities in the knowledge graph",
+  "schema": {
+    "$defs": {
+      "Entity": {
+        "properties": {
+          "name": {
+            "description": "The name of the entity",
+            "title": "Name",
+            "type": "string"
+          },
+          "entityType": {
+            "description": "The type of the entity",
+            "title": "Entitytype",
+            "type": "string"
+          },
+          "observations": {
+            "description": "An array of observation contents associated with the entity",
+            "items": {
+              "type": "string"
+            },
+            "title": "Observations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "entityType",
+          "observations"
+        ],
+        "title": "Entity",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "entities": {
+        "items": {
+          "$ref": "#/$defs/Entity"
+        },
+        "title": "Entities",
+        "type": "array"
+      }
+    },
+    "required": [
+      "entities"
+    ],
+    "title": "create_entitiesArguments",
+    "type": "object"
+  }
+}

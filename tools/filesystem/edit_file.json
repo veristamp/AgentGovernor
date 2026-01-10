@@ -1,0 +1,35 @@
+{
+  "qualified_name": "filesystem.edit_file",
+  "server_prefix": "filesystem",
+  "name": "edit_file",
+  "description": "Make line-based edits to a text file with flexible matching.\nReturns a git-style diff and a UI preview.",
+  "schema": {
+    "properties": {
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "edits": {
+        "items": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "title": "Edits",
+        "type": "array"
+      },
+      "dry_run": {
+        "default": true,
+        "title": "Dry Run",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "path",
+      "edits"
+    ],
+    "title": "edit_fileArguments",
+    "type": "object"
+  }
+}

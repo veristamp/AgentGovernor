@@ -1,0 +1,29 @@
+{
+  "qualified_name": "filesystem.directory_tree",
+  "server_prefix": "filesystem",
+  "name": "directory_tree",
+  "description": "Get a recursive tree view of files and directories as JSON.\nIncludes 'name' and 'type', with 'children' for directories. Only works within allowed directories.",
+  "schema": {
+    "properties": {
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "max_depth": {
+        "default": 5,
+        "title": "Max Depth",
+        "type": "integer"
+      },
+      "max_nodes": {
+        "default": 5000,
+        "title": "Max Nodes",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "title": "directory_treeArguments",
+    "type": "object"
+  }
+}

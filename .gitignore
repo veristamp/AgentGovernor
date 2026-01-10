@@ -8,7 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
-docs
 old
 static
 templates
@@ -24,3 +23,4 @@ qdrant_data
 memory.json
 tool_schema.json
 uv.lock
+tools_schema.json

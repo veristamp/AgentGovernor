@@ -1,0 +1,59 @@
+[project]
+name = "mcp-identity"
+version = "0.2.0"
+description = "Mono Authz Python SDK - MCP Machine Identity & OAuth 2.1 User Auth"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Team", email = "team@example.com"}
+]
+keywords = ["mcp", "oauth", "machine-identity", "ai-agents", "authentication", "oauth2", "pkce"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+    "Framework :: AsyncIO",
+    "Framework :: FastAPI",
+]
+
+dependencies = [
+    "httpx>=0.25.0",
+]
+
+[project.optional-dependencies]
+fastapi = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "starlette>=0.27.0",
+]
+demo = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "starlette>=0.27.0",
+    "itsdangerous>=2.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-httpx>=0.21.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/yourusername/mcp-identity-sdk"
+Source = "https://github.com/yourusername/mcp-identity-sdk"
+Issues = "https://github.com/yourusername/mcp-identity-sdk/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

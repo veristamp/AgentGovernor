@@ -1,0 +1,11 @@
+{
+  "qualified_name": "memory.read_graph",
+  "server_prefix": "memory",
+  "name": "read_graph",
+  "description": "Read the entire knowledge graph",
+  "schema": {
+    "properties": {},
+    "title": "read_graphArguments",
+    "type": "object"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "qualified_name": "memory.search_nodes",
+  "server_prefix": "memory",
+  "name": "search_nodes",
+  "description": "Search for nodes in the knowledge graph based on a query",
+  "schema": {
+    "properties": {
+      "query": {
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "search_nodesArguments",
+    "type": "object"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "qualified_name": "filesystem.search_files",
+  "server_prefix": "filesystem",
+  "name": "search_files",
+  "description": "Recursively search for files matching a pattern.\nCase-insensitive, returns full paths. Only works within allowed directories.",
+  "schema": {
+    "properties": {
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "pattern": {
+        "title": "Pattern",
+        "type": "string"
+      },
+      "exclude_patterns": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Exclude Patterns",
+        "type": "array"
+      }
+    },
+    "required": [
+      "path",
+      "pattern"
+    ],
+    "title": "search_filesArguments",
+    "type": "object"
+  }
+}

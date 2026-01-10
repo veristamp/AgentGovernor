@@ -17,6 +17,7 @@ import aiofiles
 from pydantic import BaseModel, ValidationError
 import urllib.parse
 from functools import wraps
+import base64
 def create_ui_resource(options: dict) -> dict:
     """Create a UIResource object compatible with MCP-UI spec.
 
@@ -155,6 +156,7 @@ mcp = FastMCP(name="secure-filesystem-server", lifespan=server_lifespan)
 # Input schemas
 class ReadFileArgs(BaseModel):
     path: str
+    encoding: str = "utf-8"  # Use 'base64' for binary files
 
 class ReadMultipleFilesArgs(BaseModel):
     paths: List[str]
@@ -162,6 +164,7 @@ class ReadMultipleFilesArgs(BaseModel):
 class WriteFileArgs(BaseModel):
     path: str
     content: str
+    encoding: str = "utf-8"  # Use 'base64' for binary files
 
 class EditOperation(BaseModel):
     oldText: str
@@ -253,16 +256,30 @@ def handle_errors(func):
 # Tools
 @mcp.tool()
 @handle_errors
-async def read_file(path: str, ctx: Context) -> str:
+async def read_file(path: str, ctx: Context, encoding: str = "utf-8") -> str:
     """Read the complete contents of a file asynchronously.
-    Supports UTF-8 encoding and raises detailed errors if the file cannot be read.
+    
+    Args:
+        path: Path to the file
+        encoding: 'utf-8' for text files (default), 'base64' for binary files (xlsx, images, pdf)
+    
+    For binary files like Excel, use encoding='base64' to get base64-encoded content.
     Only works within allowed directories."""
-    parsed = ReadFileArgs(path=path)
+    parsed = ReadFileArgs(path=path, encoding=encoding)
     valid_path = await validate_path(parsed.path)
-    async with aiofiles.open(valid_path, 'r', encoding='utf-8') as f:
-        content = await f.read()
-    logger.info(f"Read file: {valid_path}")
-    return content
+    
+    if parsed.encoding == "base64":
+        # Binary mode - return base64 encoded content
+        async with aiofiles.open(valid_path, 'rb') as f:
+            content = await f.read()
+        logger.info(f"Read binary file: {valid_path} ({len(content)} bytes)")
+        return base64.b64encode(content).decode('ascii')
+    else:
+        # Text mode - return as string
+        async with aiofiles.open(valid_path, 'r', encoding=parsed.encoding) as f:
+            content = await f.read()
+        logger.info(f"Read file: {valid_path}")
+        return content
 
 @mcp.tool()
 @handle_errors
@@ -284,20 +301,48 @@ async def read_multiple_files(paths: List[str], ctx: Context) -> str:
 
 @mcp.tool()
 @handle_errors
-async def write_file(path: str, content: str, ctx: Context, max_bytes: int = 2_000_000) -> str:
+async def write_file(path: str, content: str, ctx: Context, encoding: str = "utf-8", max_bytes: int = 2_000_000) -> str:
     """Create or overwrite a file with new content asynchronously.
+    
+    Args:
+        path: Path to the file
+        content: Content to write (string or base64-encoded for binary)
+        encoding: 'utf-8' for text files (default), 'base64' for binary files
+    
+    For binary files, pass base64-encoded content and set encoding='base64'.
     Overwrites existing files without warning. Only works within allowed directories."""
-    parsed = WriteFileArgs(path=path, content=content)
+    parsed = WriteFileArgs(path=path, content=content, encoding=encoding)
     valid_path = await validate_path(parsed.path)
-    if len(parsed.content.encode("utf-8")) > max_bytes:
-        raise Exception(f"Refusing to write >{max_bytes} bytes")
-    # Atomic write
-    tmp = f"{valid_path}.tmp"
-    async with aiofiles.open(tmp, "w", encoding="utf-8") as f:
-        await f.write(parsed.content)
-    os.replace(tmp, valid_path)
-    logger.info(f"Wrote {len(parsed.content)} bytes to file: {valid_path}")
-    return f"Successfully wrote to {parsed.path}"
+    
+    if parsed.encoding == "base64":
+        # Decode base64 and write as binary
+        try:
+            binary_content = base64.b64decode(parsed.content)
+        except Exception as e:
+            raise Exception(f"Invalid base64 content: {e}")
+        
+        if len(binary_content) > max_bytes:
+            raise Exception(f"Refusing to write >{max_bytes} bytes")
+        
+        # Atomic write
+        tmp = f"{valid_path}.tmp"
+        async with aiofiles.open(tmp, "wb") as f:
+            await f.write(binary_content)
+        os.replace(tmp, valid_path)
+        logger.info(f"Wrote {len(binary_content)} binary bytes to file: {valid_path}")
+        return f"Successfully wrote {len(binary_content)} bytes to {parsed.path}"
+    else:
+        # Text mode
+        if len(parsed.content.encode("utf-8")) > max_bytes:
+            raise Exception(f"Refusing to write >{max_bytes} bytes")
+        
+        # Atomic write
+        tmp = f"{valid_path}.tmp"
+        async with aiofiles.open(tmp, "w", encoding=parsed.encoding) as f:
+            await f.write(parsed.content)
+        os.replace(tmp, valid_path)
+        logger.info(f"Wrote {len(parsed.content)} chars to file: {valid_path}")
+        return f"Successfully wrote to {parsed.path}"
 
 @mcp.tool()
 @handle_errors
