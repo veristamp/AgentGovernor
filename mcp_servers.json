@@ -1,32 +1,43 @@
-
 {
   "FileSystem": {
-      "connection_type": "stdio",
-      "command": "python",
-      "args": ["-u", "filesystem.py"],
-      "cwd": ".",  
-      "timeout": 5.0,
-      "disabled": false
+    "connection_type": "stdio",
+    "command": "uv",
+    "args": [
+      "run",
+      "filesystem.py"
+    ],
+    "cwd": ".",
+    "timeout": 5.0,
+    "disabled": false
   },
   "Terminal": {
-      "connection_type": "stdio",
-      "command": "python",
-      "args": ["-u", "terminal.py"],
-      "cwd": ".",  
-      "timeout": 5.0,
-      "disabled": false
+    "connection_type": "stdio",
+    "command": "uv",
+    "args": [
+      "run",
+      "terminal.py"
+    ],
+    "cwd": ".",
+    "timeout": 5.0,
+    "disabled": false
   },
   "Memory": {
-        "connection_type": "stdio",
-        "command": "python",
-        "args": ["-u", "memory.py"],
-        "cwd": ".",
-        "timeout": 5.0,
-        "disabled": false
+    "connection_type": "stdio",
+    "command": "uv",
+    "args": [
+      "run",
+      "memory.py"
+    ],
+    "cwd": ".",
+    "timeout": 5.0,
+    "disabled": false
   },
   "context7": {
     "command": "npx",
-    "args": ["-y", "@upstash/context7-mcp@latest"],
+    "args": [
+      "-y",
+      "@upstash/context7-mcp@latest"
+    ],
     "disabled": false
   },
   "modelcontextprotocol python sdk": {

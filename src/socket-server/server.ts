@@ -1,0 +1,195 @@
+/**
+ * Unix Socket Server
+ * 
+ * Provides a JSON-RPC interface over Unix socket for sandbox communication.
+ * This is the communication channel between NsJail sandbox and MCPClientManager.
+ */
+
+import { createServer, type Server, type Socket } from 'net';
+import { unlinkSync, existsSync } from 'fs';
+import { MCPClientManager } from '../mcp-client/manager';
+import {
+    parseRequest,
+    createResponse,
+    createError,
+    serializeResponse,
+    ErrorCodes,
+    type JsonRpcRequest,
+    type JsonRpcResponse,
+} from './protocol';
+import type { ExecutionContext } from '../mcp-client/types';
+
+export interface SocketServerOptions {
+    socketPath: string;
+    manager: MCPClientManager;
+    context?: ExecutionContext;
+}
+
+export class SocketServer {
+    private server: Server | null = null;
+    private socketPath: string;
+    private manager: MCPClientManager;
+    private context: ExecutionContext;
+    private connections: Set<Socket> = new Set();
+
+    constructor(options: SocketServerOptions) {
+        this.socketPath = options.socketPath;
+        this.manager = options.manager;
+        this.context = options.context || {};
+    }
+
+    async start(): Promise<void> {
+        // Clean up existing socket file (not needed for Windows named pipes)
+        const isWindowsPipe = this.socketPath.startsWith('\\\\.\\pipe\\');
+        if (!isWindowsPipe && existsSync(this.socketPath)) {
+            unlinkSync(this.socketPath);
+        }
+
+        return new Promise((resolve, reject) => {
+            this.server = createServer((socket) => this.handleConnection(socket));
+
+            this.server.on('error', (err) => {
+                console.error('[SocketServer] Server error:', err);
+                reject(err);
+            });
+
+            this.server.listen(this.socketPath, () => {
+                console.log(`[SocketServer] Listening on ${this.socketPath}`);
+                resolve();
+            });
+        });
+    }
+
+    async stop(): Promise<void> {
+        // Close all connections
+        for (const socket of this.connections) {
+            socket.destroy();
+        }
+        this.connections.clear();
+
+        // Close server
+        if (this.server) {
+            return new Promise((resolve) => {
+                this.server!.close(() => {
+                    console.log('[SocketServer] Stopped');
+
+                    // Clean up socket file (not needed for Windows named pipes)
+                    const isWindowsPipe = this.socketPath.startsWith('\\\\.\\pipe\\');
+                    if (!isWindowsPipe && existsSync(this.socketPath)) {
+                        unlinkSync(this.socketPath);
+                    }
+
+                    resolve();
+                });
+            });
+        }
+    }
+
+    private handleConnection(socket: Socket): void {
+        console.log('[SocketServer] New connection');
+        this.connections.add(socket);
+
+        let buffer = '';
+
+        socket.on('data', async (data) => {
+            buffer += data.toString();
+
+            // Process complete lines (JSON-RPC messages are newline-delimited)
+            let newlineIndex;
+            while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+                const line = buffer.slice(0, newlineIndex);
+                buffer = buffer.slice(newlineIndex + 1);
+
+                if (line.trim()) {
+                    const response = await this.handleMessage(line);
+                    socket.write(serializeResponse(response));
+                }
+            }
+        });
+
+        socket.on('close', () => {
+            console.log('[SocketServer] Connection closed');
+            this.connections.delete(socket);
+        });
+
+        socket.on('error', (err) => {
+            console.error('[SocketServer] Socket error:', err);
+            this.connections.delete(socket);
+        });
+    }
+
+    private async handleMessage(line: string): Promise<JsonRpcResponse> {
+        let request: JsonRpcRequest;
+
+        try {
+            request = parseRequest(line);
+        } catch (e) {
+            return createError(null, ErrorCodes.PARSE_ERROR, 'Parse error: ' + String(e));
+        }
+
+        console.log(`[SocketServer] Request: ${request.method}`);
+
+        // Handle special methods
+        if (request.method === '__ping__') {
+            return createResponse(request.id, 'pong');
+        }
+
+        if (request.method === '__complete__') {
+            // Workflow completed - return the result
+            return createResponse(request.id, request.params?.result);
+        }
+
+        if (request.method === '__capabilities__') {
+            // Return available tool names
+            const tools = this.manager.getToolNames();
+            return createResponse(request.id, { tools });
+        }
+
+        // Route to MCPClientManager
+        try {
+            const result = await this.manager.executeAction(
+                {
+                    actionType: 'tool',
+                    actionName: request.method,
+                    arguments: request.params,
+                },
+                this.context
+            );
+
+            return createResponse(request.id, result);
+
+        } catch (e) {
+            console.error(`[SocketServer] Error executing ${request.method}:`, e);
+
+            // Map error to appropriate code
+            const message = String(e);
+            let code: number = ErrorCodes.INTERNAL_ERROR;
+
+            if (message.includes('No client found')) {
+                code = ErrorCodes.METHOD_NOT_FOUND;
+            } else if (message.includes('Unauthorized')) {
+                code = ErrorCodes.UNAUTHORIZED;
+            } else if (message.includes('Forbidden') || message.includes('policy')) {
+                code = ErrorCodes.POLICY_DENIED;
+            }
+
+            return createError(request.id, code, message);
+        }
+    }
+
+    /** Update execution context (e.g., after identity verification) */
+    setContext(context: ExecutionContext): void {
+        this.context = context;
+    }
+}
+
+// Convenience function to create and start server
+export async function createSocketServer(
+    socketPath: string,
+    manager: MCPClientManager,
+    context?: ExecutionContext
+): Promise<SocketServer> {
+    const server = new SocketServer({ socketPath, manager, context });
+    await server.start();
+    return server;
+}

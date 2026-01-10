@@ -24,3 +24,4 @@ memory.json
 tool_schema.json
 uv.lock
 tools_schema.json
+node_modules
