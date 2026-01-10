@@ -14,12 +14,12 @@ export interface Identity {
     scopes: string[];
     /** Organization/tenant ID */
     orgId?: string;
-    /** Security level (0-10) */
-    securityLevel: number;
+    /** Security level (0-10) - optional, defaults to 0 */
+    securityLevel?: number;
     /** Whether identity has been revoked */
-    revoked: boolean;
+    revoked?: boolean;
     /** JWT expiration timestamp */
-    expiresAt: number;
+    expiresAt?: number;
 }
 
 /** A policy rule */

@@ -53,7 +53,7 @@ export class PolicyEngine {
         }
 
         // 2. Check if JWT is expired
-        if (identity.expiresAt < Date.now()) {
+        if (identity.expiresAt && identity.expiresAt < Date.now()) {
             return {
                 allowed: false,
                 reason: 'Token has expired',
@@ -226,14 +226,16 @@ export class PolicyEngine {
 
         // Check security level
         if (conditions.minSecurityLevel !== undefined) {
-            if (identity.securityLevel < conditions.minSecurityLevel) {
-                return `Security level ${identity.securityLevel} < required ${conditions.minSecurityLevel}`;
+            const securityLevel = identity.securityLevel ?? 0;
+            if (securityLevel < conditions.minSecurityLevel) {
+                return `Security level ${securityLevel} < required ${conditions.minSecurityLevel}`;
             }
         }
 
         if (conditions.maxSecurityLevel !== undefined) {
-            if (identity.securityLevel > conditions.maxSecurityLevel) {
-                return `Security level ${identity.securityLevel} > maximum ${conditions.maxSecurityLevel}`;
+            const securityLevel = identity.securityLevel ?? 0;
+            if (securityLevel > conditions.maxSecurityLevel) {
+                return `Security level ${securityLevel} > maximum ${conditions.maxSecurityLevel}`;
             }
         }
 
