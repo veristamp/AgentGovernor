@@ -21,8 +21,7 @@ class FakeWorkflowLlm extends LlmClient {
 			throw new Error("Workflow examples were not provided on reuse.");
 		}
 
-		return [
-			"```python",
+		const code = [
 			"# PLAN: Use docs-to-files + repo-insight",
 			"import skills",
 			"",
@@ -30,8 +29,8 @@ class FakeWorkflowLlm extends LlmClient {
 			'    docs = await skills.load("docs-to-files").fetch_and_store(library="/vercel/next.js", topic="routing", output_dir="output/docs")',
 			'    report = await skills.load("repo-insight").analyze_repo(query="Next.js routing docs summary", output_dir="output/reports", note_key="routing_docs_summary", write_report=True)',
 			'    return {"docs": docs, "report": report}',
-			"```",
 		].join("\n");
+		return JSON.stringify({ type: "final", result: { code } });
 	}
 }
 

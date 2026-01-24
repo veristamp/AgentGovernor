@@ -2,12 +2,16 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "path";
 
 import type { LlmClient } from "../agent/llm_client";
+import { runAgentLoop } from "../agent_loop";
 import { analyzeSkillCode } from "../audit";
 import { getOrgPolicyPaths } from "../policy/org_config";
+import { SkillRegistry } from "../skills_registry/registry";
 import type {
 	SkillExample,
 	SkillFunctionSignature,
 } from "../skills_registry/schema";
+import { ToolRegistry } from "../tool_registry/registry";
+import { createSkillCreatorLoopTools } from "./loop_tools";
 import {
 	buildGenerationPrompt,
 	buildRepairPrompt,
@@ -47,6 +51,16 @@ export class SkillCreatorAgent {
 		request: SkillCreationRequest,
 		onEvent?: (event: SkillCreatorEvent) => void,
 	): Promise<SkillCreationResult> {
+		// Prefer the harness-style agent loop. Keep the previous flow as fallback.
+		try {
+			return await this.runWithAgentLoop(request, onEvent);
+		} catch (e) {
+			console.warn(
+				"[SkillCreator] Agent loop failed, falling back to legacy flow:",
+				e,
+			);
+		}
+
 		// ========================================================================
 		// Phase 1: Tool Discovery & Selection (Interactive Loop)
 		// ========================================================================
@@ -248,6 +262,129 @@ export class SkillCreatorAgent {
 		throw new Error("Max attempts reached without successful skill creation");
 	}
 
+	private async runWithAgentLoop(
+		request: SkillCreationRequest,
+		onEvent?: (event: SkillCreatorEvent) => void,
+	): Promise<SkillCreationResult> {
+		const toolRegistry = new ToolRegistry();
+		await toolRegistry.ingest();
+		const skillRegistry = new SkillRegistry(this.options.skillsDir || "skills");
+		await skillRegistry.ingest();
+
+		const initialTools = await retrieveRelevantTools(
+			request.goal,
+			request.constraints || [],
+			{ toolsPath: this.options.toolsPath },
+			12,
+		);
+		const initialSkills = await skillRegistry.search(request.goal, 6);
+
+		const planState: { plan: string; execution_graph?: unknown } = { plan: "" };
+		const loopTools = createSkillCreatorLoopTools({
+			toolRegistry,
+			skillRegistry,
+			planState,
+		});
+
+		const system = `You are the Skill Creator Orchestrator.
+You will iteratively search tools/skills, inspect schemas, refine a plan, then output a FINAL skill draft.
+
+Skill requirements:
+- Skills are higher-level orchestration graphs over MCP tools.
+- You may use loops/branching/helpers and asyncio.gather for parallel fanout.
+- All external side effects MUST go through provided tools via _bindings.
+- Never use raw IO/network/process APIs (open, requests, aiohttp, httpx, urllib, socket, subprocess, os.system, etc.).
+
+When done, return type=final with result matching the skill draft JSON schema:
+{
+  "skill_id": string,
+  "summary": string,
+  "interface": string[],
+  "bindings": object,
+  "fanout_tools": string[],
+  "code": string,
+  "examples": [{"code": string, "title"?: string, "description"?: string}],
+  "dependencies"?: string[]
+}
+`;
+
+		const user = `GOAL:\n${request.goal}\n\nCONSTRAINTS:\n${(request.constraints || []).map((c) => `- ${c}`).join("\n") || "- (none)"}\n\nINITIAL TOOL CANDIDATES (summaries):\n${initialTools.map((t) => `- ${t.qualifiedName}: ${t.description}`).join("\n") || "- (none)"}\n\nRELATED EXISTING SKILLS (summaries):\n${initialSkills.map((s) => `- ${s.skillRef}: ${s.description}`).join("\n") || "- (none)"}\n\nStart by calling registry.search if you need more tools/skills, and call update_plan as you refine your execution graph.`;
+
+		const { final } = await runAgentLoop<SkillDraftResponse>({
+			llm: this.llm,
+			model: this.options.model,
+			system,
+			user,
+			tools: loopTools,
+			toolContext: {
+				orgId: request.requester.orgId,
+				roles: request.requester.roles,
+				scopes: [],
+			},
+			options: { maxIterations: 10 },
+			validateFinal: async (value) => {
+				const v = value as Partial<SkillDraftResponse>;
+				if (!v || typeof v !== "object") {
+					return {
+						ok: false as const,
+						error: "final.result must be an object",
+					};
+				}
+				if (!v.skill_id || !v.summary || !v.code) {
+					return {
+						ok: false as const,
+						error: "Missing required fields: skill_id, summary, code",
+					};
+				}
+				if (
+					typeof v.skill_id !== "string" ||
+					v.skill_id.includes(":") ||
+					v.skill_id.includes("@")
+				) {
+					return {
+						ok: false as const,
+						error:
+							"skill_id must be a plain id like 'docs-to-files' (no 'skills:' prefix and no '@version')",
+					};
+				}
+				if (!/^[a-z0-9][a-z0-9-_]*$/i.test(v.skill_id)) {
+					return {
+						ok: false as const,
+						error:
+							"skill_id contains invalid characters; use only letters, numbers, '-' and '_'",
+					};
+				}
+				if (
+					!Array.isArray(v.interface) ||
+					!Array.isArray(v.fanout_tools) ||
+					!v.bindings
+				) {
+					return {
+						ok: false as const,
+						error:
+							"Missing required fields: interface[], bindings, fanout_tools[]",
+					};
+				}
+				return { ok: true as const, value: v as SkillDraftResponse };
+			},
+		});
+
+		const skillDraft: SkillDraft = {
+			skillId: final.skill_id,
+			version: 1,
+			summary: final.summary,
+			interfaces: final.interface,
+			bindings: final.bindings || {},
+			fanoutTools: final.fanout_tools || [],
+			code: final.code,
+			examples: Array.isArray(final.examples) ? final.examples : [],
+			dependencies: Array.isArray(final.dependencies) ? final.dependencies : [],
+		};
+
+		if (onEvent) onEvent({ type: "draft", draft: skillDraft });
+		return await this.finalizeSkill(skillDraft, request);
+	}
+
 	private async performToolSelection(
 		goal: string,
 		candidates: ToolDescriptor[],
@@ -327,6 +464,11 @@ export class SkillCreatorAgent {
 		draft: SkillDraft,
 		request: SkillCreationRequest,
 	): Promise<SkillCreationResult> {
+		if (!/^[a-z0-9][a-z0-9-_]*$/i.test(draft.skillId)) {
+			throw new Error(
+				`Invalid skillId '${draft.skillId}'. Use only letters, numbers, '-' and '_' (no 'skills:' or '@version').`,
+			);
+		}
 		const paths = await getOrgPolicyPaths(request.requester.orgId);
 		const audit = await analyzeSkillCode(draft.code, {
 			configPath: paths.skillGateConfigPath,
@@ -471,8 +613,11 @@ export class SkillCreatorAgent {
 		skillId: string,
 		interfaces: string[],
 	): SkillExample[] {
-		if (examples.length) {
-			return examples;
+		const filtered = (examples || []).filter(
+			(e) => e && typeof (e as any).code === "string" && (e as any).code.trim(),
+		);
+		if (filtered.length) {
+			return filtered;
 		}
 		const method =
 			interfaces[0]
@@ -498,7 +643,11 @@ export class SkillCreatorAgent {
 			const description = example.description
 				? `${example.description}\n\n`
 				: "";
-			return `${title}${description}\`\`\`python\n${example.code.trim()}\n\`\`\``;
+			const code =
+				typeof (example as any).code === "string"
+					? (example as any).code.trim()
+					: "";
+			return `${title}${description}\`\`\`python\n${code}\n\`\`\``;
 		});
 		return `## Examples\n\n${blocks.join("\n\n")}`;
 	}

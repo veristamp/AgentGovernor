@@ -1,9 +1,9 @@
+import { runAgentLoop } from "../agent_loop";
 import { analyzeCode } from "../audit";
 import type { PolicyEngine } from "../policy/engine";
 import { WorkflowRegistry } from "../workflow_registry";
-import { RegistrySearchTool } from "./discovery";
 import type { LlmClient } from "./llm_client";
-import { buildPrompt, buildRepairPrompt } from "./prompt_builder";
+import { buildPrompt } from "./prompt_builder";
 import { SkillCatalog } from "./skill_catalog";
 import type {
 	AgentPromptContext,
@@ -11,8 +11,11 @@ import type {
 	AgentResult,
 	AgentSkillDetail,
 	AgentSkillSummary,
-	LlmCompletionOptions,
 } from "./types";
+import {
+	createWorkflowLoopTools,
+	type WorkflowLoopState,
+} from "./workflow_loop_tools";
 
 export interface AgentOptions {
 	llm: LlmClient;
@@ -35,15 +38,13 @@ class AgentValidationError extends Error {
 	}
 }
 
-export class Agent {
+export class WorkflowAgent {
 	private catalog: SkillCatalog;
 	private workflows: WorkflowRegistry;
-	private searchTool: RegistrySearchTool;
 
 	constructor(private options: AgentOptions) {
 		this.catalog = new SkillCatalog(options.policy);
 		this.workflows = options.workflowRegistry ?? new WorkflowRegistry();
-		this.searchTool = new RegistrySearchTool();
 	}
 
 	async run(request: AgentRequest): Promise<AgentResult> {
@@ -62,114 +63,102 @@ export class Agent {
 			discovered = allowedSkills.slice(0, maxSkills);
 		}
 
-		let currentContext = await this.buildContext(
+		const currentContext = await this.buildContext(
 			discovered,
 			request.identity,
 			request.goal,
 		);
-		let prompt = buildPrompt(request.goal, currentContext);
-		let totalAttempts = 0;
+		const prompt = buildPrompt(request.goal, currentContext);
+		const loopState: WorkflowLoopState = {
+			skills: currentContext.skills,
+			workflowExamples: currentContext.workflowExamples ?? [],
+			plan: "",
+		};
+		const loopTools = createWorkflowLoopTools({
+			catalog: this.catalog,
+			workflows: this.workflows,
+			state: loopState,
+		});
 
-		// Provide the Search Tool definition to the LLM if supported by the client
-		// Currently buildPrompt just returns text.
-		// We will inject the search capability instruction into the system prompt.
-		const systemPrompt =
-			prompt.system +
-			`\n\n[TOOL DISCOVERY]\nYou have access to a tool registry. If you cannot fulfill the goal with the current skills, you can ASK to search for more tools by outputting: SEARCH("query").`;
+		const system = `${prompt.system}\n\n[WORKFLOW BUILDER]\nYou can iteratively discover skills and workflow examples before generating final workflow code.\nAlways use skills (L1), never raw tools (L0).\nPrefer asyncio.gather for independent skill calls.`;
 
-		try {
-			// We loop here to handle potential SEARCH requests from the LLM before final code generation
-			// This mimics the "Tool Use" turn in a conversation
-			let searchAttempts = 0;
-			const maxSearchAttempts = 3;
+		const user = `${prompt.user}\n\nIf you need more skills or examples, call the loop tools (skills.search, skills.get, workflows.search, update_plan).`;
 
-			while (searchAttempts < maxSearchAttempts) {
-				const { code, attempts, manifest, isSearch, searchQuery } =
-					await this.callLlm(
-						{ system: systemPrompt, user: prompt.user },
-						request.goal,
-						currentContext,
-					);
-
-				totalAttempts += attempts;
-
-				if (isSearch && searchQuery) {
-					console.log(`[Agent] LLM requested search: "${searchQuery}"`);
-					searchAttempts++;
-
-					// Execute search using our RegistrySearchTool
-					// NOTE: searchTool searches TOOLS (raw tools), catalog searches SKILLS.
-					// The user wants standardization.
-					// Let's use the catalog search which wraps the registry FTS for skills.
-					const newSkills = await this.catalog.search(
-						searchQuery,
-						request.identity,
-						3,
-					);
-
-					// Merge into context
-					const existingRefs = new Set(
-						currentContext.skills.map((s) => s.skillRef),
-					);
-					let added = 0;
-					for (const s of newSkills) {
-						if (!existingRefs.has(s.skillRef)) {
-							currentContext.skills.push(s);
-							existingRefs.add(s.skillRef);
-							added++;
-						}
-					}
-
-					if (added === 0) {
-						console.log(`[Agent] Search found no new allowed skills.`);
-						// If we found nothing new, we MUST force the LLM to proceed or fail.
-						// For this implementation, we loop back but if the LLM keeps searching, maxSearchAttempts will catch it.
-						// However, to satisfy the test where the fake LLM proceeds after search...
-					} else {
-						console.log(`[Agent] Added ${added} skills to context.`);
-						// Re-build context details (full inspection)
-						currentContext = await this.buildContext(
-							currentContext.skills,
-							request.identity,
-							request.goal,
-						);
-						// Update prompt with new context
-						prompt = buildPrompt(request.goal, currentContext);
-						// Inject search instruction again
-						prompt.system =
-							prompt.system +
-							`\n\n[TOOL DISCOVERY]\nYou have access to a tool registry. If you cannot fulfill the goal with the current skills, you can ASK to search for more tools by outputting: SEARCH("query").`;
-					}
-					continue; // Loop back to LLM
+		const { final, iterations } = await runAgentLoop<{
+			code: string;
+			manifest: { skills: string[]; tools: string[]; io_calls?: string[] };
+		}>({
+			llm: this.options.llm,
+			model: this.options.model,
+			system,
+			user,
+			tools: loopTools,
+			toolContext: {
+				orgId: request.identity.orgId,
+				roles: request.identity.roles,
+				scopes: request.identity.scopes,
+			},
+			options: { maxIterations: 12 },
+			validateFinal: async (value) => {
+				const v = value as any;
+				const code = typeof v === "string" ? v : v?.code;
+				if (!code || typeof code !== "string") {
+					return {
+						ok: false as const,
+						error: "final.result must include {code: string}",
+					};
 				}
 
-				// If not search, or search yielded nothing, or loop maxed out:
-				if (manifest) {
-					await this.workflows.saveWorkflow(request.goal, code, manifest, {
-						id: request.identity.roles.join(","),
-						orgId: request.identity.orgId,
-					});
+				const validation = await this.validateCode(code, {
+					skills: loopState.skills,
+					selectedSkill: currentContext.selectedSkill,
+					workflowExamples: loopState.workflowExamples,
+				});
+				if (!validation.valid || !validation.manifest) {
+					let hint = "";
+					if (
+						code.includes('skills.load("skills:') ||
+						code.includes("skills.load('skills:")
+					) {
+						hint =
+							' Hint: skills.load() must take a plain skill id like skills.load("docs-to-files"), not a skillRef like skills.load("skills:docs-to-files@1").';
+					}
+					if (code.match(/\w+\.(\w+)\([^=\n]*,[^=\n]*\)/)) {
+						hint +=
+							" Hint: Prefer keyword arguments when calling skill functions (match the interface signatures).";
+					}
+					return {
+						ok: false as const,
+						error: `Gate 1 rejected workflow: ${validation.errors.join("; ")}.${hint}`,
+					};
 				}
+
 				return {
-					code,
-					selectedSkills: currentContext.skills.map(
-						(skill: AgentSkillSummary) => skill.skillRef,
-					),
-					prompt: `${systemPrompt}\n\n${prompt.user}`,
-					repairAttempts: totalAttempts,
+					ok: true as const,
+					value: { code, manifest: validation.manifest },
 				};
-			}
+			},
+		});
 
-			throw new Error("Max search attempts exceeded.");
-		} catch (error) {
-			if (!(error instanceof AgentValidationError)) {
-				throw error;
-			}
+		await this.workflows.saveWorkflow(
+			request.goal,
+			final.code,
+			final.manifest,
+			{
+				id: request.identity.roles.join(","),
+				orgId: request.identity.orgId,
+			},
+			request.goal,
+		);
 
-			// ... Existing repair logic ...
-			// Simplified for this refactor to focus on Search Tool
-			throw error;
-		}
+		return {
+			code: final.code,
+			selectedSkills: loopState.skills.map((s) => s.skillRef),
+			prompt: `${system}\n\n${user}`,
+			repairAttempts: iterations,
+			plan: loopState.plan,
+			executionGraph: loopState.executionGraph,
+		};
 	}
 
 	private async buildContext(
@@ -218,100 +207,6 @@ export class Agent {
 			summary: entry.metadata.summary,
 			skills: entry.metadata.skills,
 		}));
-	}
-
-	private async callLlm(
-		prompt: { system: string; user: string },
-		goal: string,
-		context: AgentPromptContext,
-	): Promise<{
-		code: string;
-		attempts: number;
-		manifest?: { skills: string[]; tools: string[]; io_calls?: string[] };
-		isSearch?: boolean;
-		searchQuery?: string;
-	}> {
-		const messages: Array<{ role: "system" | "user"; content: string }> = [
-			{ role: "system", content: prompt.system },
-			{ role: "user", content: prompt.user },
-		];
-
-		const options: LlmCompletionOptions = {
-			model: this.options.model,
-			temperature: this.options.temperature ?? 0.2,
-			maxTokens: this.options.maxTokens ?? 2048,
-		};
-
-		const maxAttempts = this.options.maxRepairAttempts ?? 2;
-		let lastCode = "";
-		let lastValidationErrors: string[] = [];
-
-		for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-			const raw = await this.options.llm.complete([...messages], options);
-
-			// Check for SEARCH request
-			const searchMatch = raw.match(/SEARCH\("([^"]+)"\)/);
-			if (searchMatch) {
-				return {
-					code: "",
-					attempts: attempt + 1,
-					isSearch: true,
-					searchQuery: searchMatch[1],
-				};
-			}
-
-			// If code extraction fails but it wasn't a search, treating it as an attempt failure
-			let code: string;
-			try {
-				code = this.extractCode(raw, goal);
-			} catch (e) {
-				lastCode = raw;
-				continue;
-			}
-
-			lastCode = code;
-
-			const validation = await this.validateCode(code, context);
-			lastValidationErrors = validation.errors;
-			if (validation.valid) {
-				return { code, attempts: attempt + 1, manifest: validation.manifest };
-			}
-
-			const repairPrompt = buildRepairPrompt(
-				goal,
-				context,
-				code,
-				validation.errors,
-			);
-			messages.splice(
-				0,
-				messages.length,
-				{ role: "system", content: repairPrompt.system },
-				{ role: "user", content: repairPrompt.user },
-			);
-		}
-
-		throw new AgentValidationError(
-			"LLM output failed validation after repair attempts.",
-			lastCode,
-			lastValidationErrors,
-			maxAttempts,
-		);
-	}
-
-	private extractCode(response: string, goal: string): string {
-		const fenceMatch = response.match(/```python\s*([\s\S]*?)```/i);
-		if (fenceMatch?.[1]) {
-			return fenceMatch[1].trim();
-		}
-		const looseMatch = response.match(/```\s*([\s\S]*?)```/);
-		if (looseMatch?.[1]) {
-			return looseMatch[1].trim();
-		}
-		if (response.includes("async def main")) {
-			return response.trim();
-		}
-		throw new Error(`LLM output did not include python code for goal: ${goal}`);
 	}
 
 	private async validateCode(

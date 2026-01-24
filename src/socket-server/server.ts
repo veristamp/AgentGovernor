@@ -32,13 +32,14 @@ export class SocketServer {
 	private context: ExecutionContext;
 	private connections: Set<Socket> = new Set();
 	private skillRegistry: GcmRegistrySearch;
+	private skillRegistryLoad: Promise<void>;
 
 	constructor(options: SocketServerOptions) {
 		this.socketPath = options.socketPath;
 		this.manager = options.manager;
 		this.context = options.context || {};
 		this.skillRegistry = new GcmRegistrySearch();
-		this.skillRegistry.load();
+		this.skillRegistryLoad = this.skillRegistry.load();
 	}
 
 	async start(): Promise<void> {
@@ -170,6 +171,7 @@ export class SocketServer {
 			try {
 				const query = String(request.params?.query || "");
 				const limit = Number(request.params?.limit || 5);
+				await this.skillRegistryLoad;
 
 				// Use GcmRegistrySearch
 				const result = this.skillRegistry.search(query, limit);

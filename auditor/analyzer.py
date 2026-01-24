@@ -307,9 +307,32 @@ def analyze_code(code: str) -> Manifest:
     for tool in tools:
         if tool.count('.') == 1:
             skill_id = tool.split('.', 1)[0]
+
+            signature_path = SKILLS_DIR / skill_id / "signature.json"
             manifest_path = SKILLS_DIR / skill_id / "manifest.json"
+
+            if signature_path.exists():
+                try:
+                    signature_data = json.loads(signature_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError as exc:
+                    errors.append(f"Invalid signature.json for skill '{skill_id}': {exc}")
+                    continue
+                if not isinstance(signature_data, dict):
+                    errors.append(f"Signature for skill '{skill_id}' must be a JSON object")
+                    continue
+                skill_ref = signature_data.get("skillRef")
+                if isinstance(skill_ref, str) and skill_ref.startswith("skills:") and "@" in skill_ref:
+                    skill_refs.append(skill_ref)
+                    continue
+
+                signature_skill_id = str(signature_data.get("skillId", skill_id))
+                signature_version = str(signature_data.get("version", 1))
+                skill_refs.append(f"skills:{signature_skill_id}@{signature_version}")
+                continue
+
+            # Fallback for older skills.
             if not manifest_path.exists():
-                errors.append(f"Skill manifest not found for '{skill_id}'")
+                errors.append(f"Skill signature/manifest not found for '{skill_id}'")
                 continue
             try:
                 manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))

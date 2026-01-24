@@ -18,10 +18,17 @@ class FakeDiscoveryLlm extends LlmClient {
 		this.callCount += 1;
 		const prompt = messages.map((message) => message.content).join("\n");
 
-		// 1. Initial Call: Agent asks for code. Fake LLM realizes it needs tools.
+		// 1. First call: ask to expand skill context
 		if (this.callCount === 1) {
-			// Simulate realizing we need documentation tools which might not be in initial context
-			return `SEARCH("fetch documentation")`;
+			return JSON.stringify({
+				type: "tool_call",
+				name: "skills.search",
+				arguments: {
+					query: "fetch documentation",
+					limit: 5,
+					add_to_context: true,
+				},
+			});
 		}
 
 		// The test environment might not find "docs-to-files" if FTS ranks it low for "fetch documentation" or if it's not in DB
@@ -31,16 +38,15 @@ class FakeDiscoveryLlm extends LlmClient {
 
 		// Actually, if search yields nothing, we proceed.
 
-		return [
-			"```python",
+		const code = [
+			"# PLAN: Fetch docs",
 			"import skills",
 			"",
 			"async def main():",
-			'    # Assuming "docs-to-files" was found and added',
 			'    docs = await skills.load("docs-to-files").fetch_and_store(library="/vercel/next.js", topic="routing", output_dir="output/docs")',
 			"    return docs",
-			"```",
 		].join("\n");
+		return JSON.stringify({ type: "final", result: { code } });
 	}
 }
 
@@ -64,5 +70,5 @@ test("agent dynamically discovers tools via search", async () => {
 	});
 
 	expect(result.code).toContain('skills.load("docs-to-files")');
-	expect(result.prompt).toContain("[TOOL DISCOVERY]");
+	expect(result.prompt).toContain("[WORKFLOW BUILDER]");
 });

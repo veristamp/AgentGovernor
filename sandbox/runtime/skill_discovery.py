@@ -35,24 +35,30 @@ async def search(query: str, limit: int = 20) -> List[Dict[str, Any]]:
         return []
     
     result = response.get("result", {})
+    # Socket server wraps search payload as {"result": {"result": <tool_search_result>}}
+    if isinstance(result, dict) and isinstance(result.get("result"), dict):
+        result = result.get("result", {})
     tool_refs = result.get("tool_references", [])
     
     mapped_skills = []
     for ref in tool_refs:
         sig = ref.get("signature", {})
-        skill_id = sig.get("id", "").replace("skills.", "") # "skills.foo" -> "foo"
+        skill_ref = sig.get("skillRef") or ref.get("tool_name") or ""
+        skill_id = sig.get("skillId") or ""
         version = sig.get("version", "1")
-        
-        # reconstruct legacy skillRef for loader compatibility
-        skill_ref = f"skills:{skill_id}@{version}"
-        
+
+        if not skill_id and isinstance(skill_ref, str) and skill_ref.startswith("skills:") and "@" in skill_ref:
+            skill_id = skill_ref.split(":", 1)[1].split("@", 1)[0]
+
+        if not skill_ref and skill_id:
+            skill_ref = f"skills:{skill_id}@{version}"
+
         mapped_skills.append({
             "skillRef": skill_ref,
             "skillId": skill_id,
             "description": sig.get("description", ""),
             "version": version,
-            # Pass through the full signature for consumers who know how to use it
-            "signature": sig
+            "signature": sig,
         })
         
     return mapped_skills

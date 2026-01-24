@@ -45,6 +45,8 @@ export interface AgentResult {
 	selectedSkills: string[];
 	prompt: string;
 	repairAttempts: number;
+	plan?: string;
+	executionGraph?: unknown;
 }
 
 export interface LlmMessage {

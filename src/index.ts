@@ -18,7 +18,7 @@ import {
 	launchSandbox,
 	launchUnsafe,
 } from "../sandbox/launcher";
-import { LlmClient } from "./agent";
+import { LlmClient, WorkflowAgent } from "./agent";
 import { MCPClientManager } from "./mcp-client";
 import { applyAbacProposalToOrgPolicy, PolicyEngine } from "./policy";
 import { SkillCreatorAgent } from "./skill_creator";
@@ -116,10 +116,11 @@ Usage:
 
 Options:
   --config <path>      Path to MCP servers config (default: mcp_servers.json)
-  --execute <file>     Execute a workflow file and exit
-  --socket <path>      Unix socket path (default: /tmp/mcp-workflow.sock)
-  --skill-create       Run admin skill creator agent
-  --help, -h           Show this help
+	  --execute <file>     Execute a workflow file and exit
+	  --socket <path>      Unix socket path (default: /tmp/mcp-workflow.sock)
+	  --skill-create       Run admin skill creator agent
+	  --workflow-create    Run workflow creation agent
+	  --help, -h           Show this help
 
 Server Mode:
   bun run src/index.ts
@@ -131,8 +132,11 @@ Execute Mode:
   
   Executes a workflow file and exits.
 
-Skill Creation Mode:
-  bun run src/index.ts --skill-create "Your goal" --role mcp:team-role --org org_123
+	Skill Creation Mode:
+	  bun run src/index.ts --skill-create "Your goal" --role mcp:team-role --org org_123
+
+	Workflow Creation Mode:
+	  bun run src/index.ts --workflow-create "Your goal" --role mcp:docs-curator --org org_123
 `);
 		process.exit(0);
 	}
@@ -141,6 +145,7 @@ Skill Creation Mode:
 	let configPath = "mcp_servers.json";
 	let executeFile: string | null = null;
 	let skillGoal: string | null = null;
+	let workflowGoal: string | null = null;
 	const skillRoles: string[] = [];
 	let skillOrg: string | undefined;
 	let skillTeam: string | undefined;
@@ -154,6 +159,8 @@ Skill Creation Mode:
 			process.env.MCP_SOCKET_PATH = args[++i] as string;
 		} else if (args[i] === "--skill-create" && args[i + 1]) {
 			skillGoal = args[++i] as string;
+		} else if (args[i] === "--workflow-create" && args[i + 1]) {
+			workflowGoal = args[++i] as string;
 		} else if (args[i] === "--role" && args[i + 1]) {
 			skillRoles.push(args[++i] as string);
 		} else if (args[i] === "--org" && args[i + 1]) {
@@ -163,13 +170,19 @@ Skill Creation Mode:
 		}
 	}
 
+	const llmBase =
+		process.env.LLM_API_BASE ||
+		process.env.OPENAI_API_BASE ||
+		process.env.OPENAI_BASE_URL ||
+		"https://api.openai.com/v1";
+	const llmKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || "";
+	const llmModel = process.env.LLM_MODEL_NAME || "gpt-4o-mini";
+
 	if (skillGoal) {
-		const llmBase = process.env.LLM_API_BASE || "http://localhost:1234/v1";
-		const llmModel = process.env.LLM_MODEL_NAME || "granite-4.0-micro";
 		const policy = new PolicyEngine();
 		await policy.loadRulesFromFile("policy/policy_rules.json");
 		const agent = new SkillCreatorAgent(
-			{ llm: new LlmClient(llmBase, ""), policy },
+			{ llm: new LlmClient(llmBase, llmKey), policy },
 			{
 				model: llmModel,
 				toolsPath: "tools_schema.json",
@@ -226,6 +239,30 @@ Skill Creation Mode:
 			}
 		}
 
+		process.exit(0);
+	}
+
+	if (workflowGoal) {
+		const policy = new PolicyEngine();
+		await policy.loadRulesFromFile("policy/policy_rules.json");
+		const agent = new WorkflowAgent({
+			llm: new LlmClient(llmBase, llmKey),
+			policy,
+			model: llmModel,
+			temperature: 0.2,
+			maxTokens: 2200,
+			maxRepairAttempts: 3,
+		});
+		const result = await agent.run({
+			goal: workflowGoal,
+			identity: {
+				roles: ["mcp:admin", ...skillRoles],
+				scopes: [],
+				orgId: skillOrg,
+			},
+		});
+		console.error("[WorkflowAgent] Generated workflow:");
+		console.log(result.code);
 		process.exit(0);
 	}
 

@@ -30,8 +30,10 @@ file_patcher
 judgment
 sdk
 legacy
-docs
 workflows_gcm
+workflows_test
+skills_test_e2e
+policy/role_permissions_e2e.json
 memory.jsonl
 .opencode
 .ruff_cache

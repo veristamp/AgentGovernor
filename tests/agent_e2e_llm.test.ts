@@ -3,11 +3,11 @@ import { Agent, LlmClient } from "../src/agent";
 import { analyzeCode } from "../src/audit";
 import { PolicyEngine } from "../src/policy/engine";
 
-// Use real LLM if key is present, otherwise fallback to fake
+// Use real LLM if key is present, otherwise fallback to fake.
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-// For reliable CI/testing, prefer Fake LLM unless explicitly debugging.
-// The Real LLM might pick ephemeral skills created by other tests that are deleted from disk but exist in DB.
-const USE_REAL_LLM = false; // !!OPENAI_API_KEY;
+const OPENAI_API_BASE =
+	process.env.OPENAI_API_BASE || "https://api.openai.com/v1";
+const USE_REAL_LLM = !!OPENAI_API_KEY;
 
 class FakeAgentLlm extends LlmClient {
 	private callCount = 0;
@@ -29,16 +29,15 @@ class FakeAgentLlm extends LlmClient {
 		// Let's assume static discovery works for "Fetch Next.js routing docs" -> "docs-to-files"
 		// So we provide code directly.
 
-		return [
-			"```python",
+		const code = [
 			"# PLAN: Use docs-to-files to fetch documentation",
 			"import skills",
 			"",
 			"async def main():",
 			'    await skills.load("docs-to-files").fetch_and_store(library="/vercel/next.js", topic="routing", output_dir="output/docs")',
 			'    return "Docs fetched"',
-			"```",
 		].join("\n");
+		return JSON.stringify({ type: "final", result: { code } });
 	}
 }
 
@@ -48,7 +47,7 @@ test("agent end-to-end with local LLM", async () => {
 
 	if (USE_REAL_LLM) {
 		console.log("Using Real OpenAI LLM for Agent E2E Test");
-		llmClient = new LlmClient("https://api.openai.com/v1", OPENAI_API_KEY!);
+		llmClient = new LlmClient(OPENAI_API_BASE, OPENAI_API_KEY!);
 		modelName = "gpt-4o-mini";
 	} else {
 		console.log("Using Fake LLM for Agent E2E Test");

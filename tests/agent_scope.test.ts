@@ -22,16 +22,15 @@ class FakeLlm extends LlmClient {
 		}
 
 		if (this.callCount === 1) {
-			return [
-				"```python",
-				"# PLAN: demo with invalid tool",
+			const bad = [
+				"# PLAN: demo with invalid skill",
 				"import skills",
 				"",
 				"async def main():",
 				'    result = await skills.load("repo-insight").analyze_repo(query="routing", output_dir="output/docs", note_key="demo")',
 				"    return result",
-				"```",
 			].join("\n");
+			return JSON.stringify({ type: "final", result: { code: bad } });
 		}
 
 		if (
@@ -45,16 +44,15 @@ class FakeLlm extends LlmClient {
 			throw new Error("Repair prompt missing constraints.");
 		}
 
-		return [
-			"```python",
+		const ok = [
 			"# PLAN: demo",
 			"import skills",
 			"",
 			"async def main():",
 			'    result = await skills.load("docs-to-files").fetch_and_store(library="/vercel/next.js", topic="routing", output_dir="output/docs")',
 			"    return result",
-			"```",
 		].join("\n");
+		return JSON.stringify({ type: "final", result: { code: ok } });
 	}
 }
 

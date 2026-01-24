@@ -38,4 +38,4 @@ async def main():
 	}
 
 	expect(result.stdout).toContain("docs-to-files");
-});
+}, 15000);
