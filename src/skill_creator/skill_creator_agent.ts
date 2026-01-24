@@ -37,14 +37,14 @@ export class SkillCreatorAgent {
         // Phase 1: Tool Discovery & Selection (Interactive Loop)
         // ========================================================================
         
-        let candidateTools = retrieveRelevantTools(
+        let candidateTools = await retrieveRelevantTools(
             request.goal,
             request.constraints || [],
             { toolsPath: this.options.toolsPath },
             15
         );
 
-        const allTools = loadTools(this.options.toolsPath);
+        const allTools = await loadTools(this.options.toolsPath);
         let finalSelection: ToolSelectionResponse | undefined;
         let discoveryAttempts = 0;
         const maxDiscoveryAttempts = 3;
@@ -67,7 +67,7 @@ export class SkillCreatorAgent {
                 // Search for missing tools
                 const newTools: ToolDescriptor[] = [];
                 for (const query of selection.missing_capabilities) {
-                    const found = retrieveRelevantTools(
+                    const found = await retrieveRelevantTools(
                         query,
                         [],
                         { toolsPath: this.options.toolsPath },

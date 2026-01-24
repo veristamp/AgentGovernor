@@ -272,7 +272,7 @@ async function main(): Promise<number> {
 
     const registry = new WorkflowRegistry({ baseDir: 'workflows_gcm' });
     if (allAllowed) {
-        const stored = registry.saveWorkflow('Docs + Insight workflow', RAG_AGENT_CODE, {
+        const stored = await registry.saveWorkflow('Docs + Insight workflow', RAG_AGENT_CODE, {
             skills: manifest.skills ?? [],
             tools: manifest.tools ?? [],
             io_calls: [],
@@ -284,7 +284,7 @@ async function main(): Promise<number> {
     }
 
     if (allAllowed) {
-        const matches = registry.search('Fetch docs and store insight', manifest.skills ?? [], orgId, 1);
+        const matches = await registry.search('Fetch docs and store insight', manifest.skills ?? [], orgId, 1);
         if (matches.length) {
             console.log(`✅ Retrieved workflow example for reuse: ${matches[0]?.metadata.id}`);
         } else {

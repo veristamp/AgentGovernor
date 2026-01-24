@@ -1,6 +1,8 @@
-import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, resolve } from 'path';
-import { RegistryDatabase } from '../registry/db';
+import { db, toTsVector } from '../registry/db';
+import { skills } from '../registry/schema';
+import { sql, eq } from 'drizzle-orm';
 
 export interface SkillSummary {
     skillRef: string;
@@ -12,36 +14,22 @@ export interface SkillSummary {
     fanoutTools: string[];
 }
 
-export interface SkillSearchResult {
-    skillRef: string;
-    description: string;
-    interfaces: string[];
-    bindings: Record<string, string>;
-    fanoutTools: string[];
-}
+// Re-export for compatibility
+export interface SkillSearchResult extends SkillSummary {}
 
 const DEFAULT_SKILLS_DIR = resolve('skills');
 
 export class SkillRegistry {
-    private db;
     private skillsDir: string;
 
     constructor(skillsDir: string = DEFAULT_SKILLS_DIR, dbPath?: string) {
         this.skillsDir = resolve(skillsDir);
-        this.db = RegistryDatabase.getInstance(dbPath).getDb();
     }
 
     /**
-     * Load skills (alias for ingest for compatibility)
+     * Scan disk and populate Postgres
      */
-    public load() {
-        this.ingest();
-    }
-
-    /**
-     * Scan disk and populate SQLite
-     */
-    public ingest() {
+    public async ingest() {
         if (!existsSync(this.skillsDir)) return;
         
         const entries = readdirSync(this.skillsDir, { withFileTypes: true });
@@ -54,7 +42,7 @@ export class SkillRegistry {
             try {
                 const summary = this.readSkillFromDisk(skillDir);
                 if (summary) {
-                    this.upsert(summary);
+                    await this.upsert(summary);
                     count++;
                 }
             } catch (e) {
@@ -86,10 +74,8 @@ export class SkillRegistry {
         
         if (existsSync(docPath)) {
             const docContent = readFileSync(docPath, 'utf-8');
-            // Simple parsing logic (can be refined)
             const firstLine = docContent.split('\n')[0];
-            description = (firstLine ?? '').replace(/^#\s+/, '').trim(); // Fallback to title? 
-            // Better: Find first non-header line
+            description = (firstLine ?? '').replace(/^#\s+/, '').trim(); 
             const lines = docContent.split('\n');
             for (const line of lines) {
                 if (line.trim() && !line.startsWith('#')) {
@@ -97,14 +83,8 @@ export class SkillRegistry {
                     break;
                 }
             }
-            
-            // Extract interface blocks
-            // This is a simplified parser, keeping it robust
             if (data.interfaces && Array.isArray(data.interfaces)) {
                 interfaces = data.interfaces;
-            } else {
-                // Fallback to legacy parsing if needed (omitted for brevity, assume manifest has it or basic scan)
-                interfaces = []; 
             }
         }
 
@@ -119,74 +99,71 @@ export class SkillRegistry {
         };
     }
 
-    private upsert(skill: SkillSummary) {
-        const insert = this.db.prepare(`
-            INSERT OR REPLACE INTO skills (skill_ref, skill_id, version, description, manifest_json, interfaces_json)
-            VALUES ($ref, $id, $ver, $desc, $manifest, $interfaces)
-        `);
+    private async upsert(skill: SkillSummary) {
+        const interfacesJson = skill.interfaces;
+        const searchText = `${skill.skillRef} ${skill.skillId} ${skill.description} ${skill.interfaces.join(' ')}`;
 
-        insert.run({
-            $ref: skill.skillRef,
-            $id: skill.skillId,
-            $ver: skill.version,
-            $desc: skill.description,
-            $manifest: JSON.stringify({
+        await db.insert(skills).values({
+            skillRef: skill.skillRef,
+            skillId: skill.skillId,
+            version: skill.version,
+            description: skill.description,
+            manifest: {
                 bindings: skill.bindings,
                 fanoutTools: skill.fanoutTools
-            }),
-            $interfaces: JSON.stringify(skill.interfaces)
+            },
+            interfaces: interfacesJson,
+            searchVector: toTsVector(searchText)
+        }).onConflictDoUpdate({
+            target: skills.skillRef,
+            set: {
+                description: skill.description,
+                manifest: {
+                    bindings: skill.bindings,
+                    fanoutTools: skill.fanoutTools
+                },
+                interfaces: interfacesJson,
+                searchVector: toTsVector(searchText)
+            }
         });
     }
 
-    public search(query: string, limit: number = 20): SkillSummary[] {
+    public async search(query: string, limit: number = 20): Promise<SkillSummary[]> {
         const sanitized = query.replace(/[^\w\s]/g, '').trim();
-        if (!sanitized) return this.listAll().slice(0, limit); // Fallback to list
+        if (!sanitized) return (await this.listAll()).slice(0, limit);
 
-        const ftsQuery = this.db.prepare(`
-            SELECT skill_ref 
-            FROM skills_fts 
-            WHERE skills_fts MATCH $query 
-            ORDER BY rank 
-            LIMIT $limit
-        `);
+        const tokens = sanitized.split(/\s+/).filter(t => t.length > 2);
+        if (tokens.length === 0) return (await this.listAll()).slice(0, limit);
+        
+        const searchQuery = tokens.join(' | ');
 
-        const results = ftsQuery.all({ 
-            $query: sanitized + "*", 
-            $limit: limit 
-        }) as { skill_ref: string }[];
+        const results = await db.select()
+            .from(skills)
+            .where(sql`search_vector @@ to_tsquery('english', ${searchQuery})`)
+            .limit(limit);
 
-        if (results.length === 0) return [];
-
-        const placeholders = results.map(() => '?').join(',');
-        const finalQuery = this.db.prepare(`
-            SELECT * FROM skills WHERE skill_ref IN (${placeholders})
-        `);
-
-        const rows = finalQuery.all(...results.map(r => r.skill_ref)) as any[];
-        return rows.map(this.mapRow);
+        return results.map(this.mapRow);
     }
 
-    public listAll(): SkillSummary[] {
-        const query = this.db.query('SELECT * FROM skills');
-        const rows = query.all() as any[];
-        return rows.map(this.mapRow);
+    public async listAll(): Promise<SkillSummary[]> {
+        const results = await db.select().from(skills);
+        return results.map(this.mapRow);
     }
 
-    public inspect(skillRef: string): SkillSummary | null {
-        const query = this.db.prepare('SELECT * FROM skills WHERE skill_ref = ?');
-        const row = query.get(skillRef) as any;
-        if (!row) return null;
-        return this.mapRow(row);
+    public async inspect(skillRef: string): Promise<SkillSummary | null> {
+        const results = await db.select().from(skills).where(eq(skills.skillRef, skillRef));
+        if (results.length === 0 || !results[0]) return null;
+        return this.mapRow(results[0]);
     }
 
-    private mapRow(row: any): SkillSummary {
-        const manifest = JSON.parse(row.manifest_json);
+    private mapRow(row: typeof skills.$inferSelect): SkillSummary {
+        const manifest = row.manifest as { bindings: Record<string, string>, fanoutTools: string[] };
         return {
-            skillRef: row.skill_ref,
-            skillId: row.skill_id,
+            skillRef: row.skillRef,
+            skillId: row.skillId,
             version: row.version,
             description: row.description,
-            interfaces: JSON.parse(row.interfaces_json),
+            interfaces: row.interfaces as string[],
             bindings: manifest.bindings,
             fanoutTools: manifest.fanoutTools
         };

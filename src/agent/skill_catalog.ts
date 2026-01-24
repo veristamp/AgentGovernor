@@ -12,23 +12,26 @@ export class SkillCatalog {
 
     constructor(private policy: PolicyEngine, options?: SkillCatalogOptions) {
         this.registry = new SkillRegistry(options?.skillsDir);
-        this.registry.load();
+        // Ingest is async, but constructor cannot be.
+        // We rely on explicit refresh() or initial load being fast/handled elsewhere if critical.
+        // Or we can fire and forget:
+        this.registry.ingest().catch(e => console.error("SkillCatalog ingest failed:", e));
     }
 
-    refresh(): void {
-        this.registry.load();
+    async refresh(): Promise<void> {
+        await this.registry.ingest();
     }
 
-    search(query: string, identity: AgentIdentityScope, limit: number = 10): AgentSkillSummary[] {
-        const results = this.registry.search(query, limit);
+    async search(query: string, identity: AgentIdentityScope, limit: number = 10): Promise<AgentSkillSummary[]> {
+        const results = await this.registry.search(query, limit);
         return results.filter((skill) => this.isSkillAllowed(skill.skillRef, identity));
     }
 
-    inspect(skillRef: string, identity: AgentIdentityScope): AgentSkillDetail | null {
+    async inspect(skillRef: string, identity: AgentIdentityScope): Promise<AgentSkillDetail | null> {
         if (!this.isSkillAllowed(skillRef, identity)) {
             return null;
         }
-        const detail = this.registry.inspect(skillRef);
+        const detail = await this.registry.inspect(skillRef);
         if (!detail) return null;
         return {
             skillRef: detail.skillRef,
@@ -39,8 +42,8 @@ export class SkillCatalog {
         };
     }
 
-    listAllowed(identity: AgentIdentityScope, limit: number = 200): AgentSkillSummary[] {
-        const all = this.registry.listAll();
+    async listAllowed(identity: AgentIdentityScope, limit: number = 200): Promise<AgentSkillSummary[]> {
+        const all = await this.registry.listAll();
         return all.filter((skill: AgentSkillSummary) => this.isSkillAllowed(skill.skillRef, identity)).slice(0, limit);
     }
 

@@ -1,35 +1,34 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, resolve } from 'path';
-import { RegistryDatabase } from '../registry/db';
+import { db, toTsVector } from '../registry/db';
+import { tools } from '../registry/schema';
+import { sql, eq } from 'drizzle-orm';
 import type { ToolDescriptor, ToolRegistryOptions } from './types';
 
 export class ToolRegistry {
-    private db;
     private toolsDir: string;
 
     constructor(options: ToolRegistryOptions = {}) {
-        // Use shared DB instance (persisted or memory)
-        this.db = RegistryDatabase.getInstance(options.dbPath).getDb();
         this.toolsDir = resolve(options.toolsDir || 'tools');
     }
 
-    public ingest() {
-        const walk = (dir: string) => {
-            if (!require('fs').existsSync(dir)) {
-                return;
-            }
+    public async ingest() {
+        // console.log(`[ToolRegistry] Ingesting tools from: ${this.toolsDir}`);
+        const walk = async (dir: string) => {
+            if (!require('fs').existsSync(dir)) return;
+            
             const files = readdirSync(dir);
             for (const file of files) {
                 const path = join(dir, file);
                 const stat = statSync(path);
                 if (stat.isDirectory()) {
-                    walk(path);
+                    await walk(path);
                 } else if (file.endsWith('.json')) {
                     try {
                         const content = readFileSync(path, 'utf-8');
                         const data = JSON.parse(content);
                         if (data.qualifiedName && data.description) {
-                            this.upsert(data);
+                            await this.upsert(data);
                         }
                     } catch (e) {
                         console.error(`Failed to ingest ${path}:`, e);
@@ -39,84 +38,72 @@ export class ToolRegistry {
         };
 
         // Check if empty, then ingest
-        const countResult = this.db.query('SELECT count(*) as count FROM tools').get() as { count: number };
-        if (countResult.count === 0) {
-             walk(this.toolsDir);
-             const finalCount = this.db.query('SELECT count(*) as c FROM tools').get() as {c: number};
-             console.log(`[ToolRegistry] Ingested ${finalCount.c} tools.`);
+        const result = await db.select({ count: sql<number>`count(*)` }).from(tools);
+        const count = Number(result[0]?.count || 0);
+        
+        if (count === 0) {
+             await walk(this.toolsDir);
+             const final = await db.select({ count: sql<number>`count(*)` }).from(tools);
+             console.log(`[ToolRegistry] Ingested ${final[0]?.count} tools.`);
         }
     }
 
-    private upsert(tool: any) {
-        const insert = this.db.prepare(`
-            INSERT OR REPLACE INTO tools (qualified_name, server_prefix, name, description, schema_json)
-            VALUES ($qualifiedName, $serverPrefix, $name, $description, $schema)
-        `);
-
-        insert.run({
-            $qualifiedName: tool.qualifiedName,
-            $serverPrefix: tool.serverPrefix,
-            $name: tool.name,
-            $description: tool.description,
-            $schema: JSON.stringify(tool.schema || {})
+    private async upsert(tool: any) {
+        await db.insert(tools).values({
+            qualifiedName: tool.qualifiedName,
+            serverPrefix: tool.serverPrefix,
+            name: tool.name,
+            description: tool.description,
+            schema: tool.schema || {},
+            searchVector: toTsVector(tool.qualifiedName + ' ' + tool.name + ' ' + tool.description)
+        }).onConflictDoUpdate({
+            target: tools.qualifiedName,
+            set: {
+                serverPrefix: tool.serverPrefix,
+                name: tool.name,
+                description: tool.description,
+                schema: tool.schema || {},
+                searchVector: toTsVector(tool.qualifiedName + ' ' + tool.name + ' ' + tool.description)
+            }
         });
     }
 
-    public search(query: string, limit: number = 10): ToolDescriptor[] {
+    public async search(query: string, limit: number = 10): Promise<ToolDescriptor[]> {
         const sanitized = query.replace(/[^\w\s]/g, ' ').trim();
         if (!sanitized) return [];
 
-        // Split into tokens and join with OR for broader matching
-        const tokens = sanitized.split(/\s+/).filter(t => t.length > 2); // Ignore short words
+        const tokens = sanitized.split(/\s+/).filter(t => t.length > 2);
         if (tokens.length === 0) return [];
         
-        const ftsQueryString = tokens.map(t => `"${t}"*`).join(' OR ');
+        // Use plainto_tsquery or simple string matching for 'OR' logic
+        const searchQuery = tokens.join(' | ');
+        
+        const results = await db.select()
+            .from(tools)
+            .where(sql`search_vector @@ to_tsquery('english', ${searchQuery})`)
+            .limit(limit);
 
-        const ftsQuery = this.db.prepare(`
-            SELECT qualified_name 
-            FROM tools_fts 
-            WHERE tools_fts MATCH $query 
-            ORDER BY rank 
-            LIMIT $limit
-        `);
-
-        const results = ftsQuery.all({ 
-            $query: ftsQueryString, 
-            $limit: limit 
-        }) as { qualified_name: string }[];
-
-        if (results.length === 0) return [];
-
-        const placeholders = results.map(() => '?').join(',');
-        const finalQuery = this.db.prepare(`
-            SELECT * FROM tools WHERE qualified_name IN (${placeholders})
-        `);
-
-        const rows = finalQuery.all(...results.map(r => r.qualified_name)) as any[];
-
-        return rows.map(this.mapRow);
+        return results.map(this.mapRow);
     }
 
-    public getAll(): ToolDescriptor[] {
-        const query = this.db.query('SELECT * FROM tools');
-        const rows = query.all() as any[];
-        return rows.map(this.mapRow);
+    public async getAll(): Promise<ToolDescriptor[]> {
+        const results = await db.select().from(tools);
+        return results.map(this.mapRow);
     }
     
-    public get(qualifiedName: string): ToolDescriptor | null {
-        const query = this.db.prepare('SELECT * FROM tools WHERE qualified_name = ?');
-        const row = query.get(qualifiedName) as any;
-        if (!row) return null;
-        return this.mapRow(row);
+    public async get(qualifiedName: string): Promise<ToolDescriptor | null> {
+        const results = await db.select().from(tools).where(eq(tools.qualifiedName, qualifiedName));
+        if (results.length === 0 || !results[0]) return null;
+        return this.mapRow(results[0]);
     }
 
-    private mapRow(row: any): ToolDescriptor {
+    private mapRow(row: typeof tools.$inferSelect): ToolDescriptor {
         return {
-            qualifiedName: row.qualified_name,
-            serverPrefix: row.server_prefix,
+            qualifiedName: row.qualifiedName,
+            serverPrefix: row.serverPrefix,
             name: row.name,
             description: row.description,
-            schema: JSON.parse(row.schema_json)
+            schema: row.schema as unknown
         };
     }
 }

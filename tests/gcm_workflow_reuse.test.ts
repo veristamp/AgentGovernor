@@ -59,7 +59,7 @@ test('agent saves and reuses multi-skill workflows', async () => {
         identity,
     });
 
-    const stored = registry.listWorkflows('org-1');
+    const stored = await registry.listWorkflows('org-1');
     expect(stored.length).toBeGreaterThan(0);
     expect(stored[0]?.manifest.skills).toContain('skills:docs-to-files@1');
     expect(stored[0]?.manifest.skills).toContain('skills:repo-insight@1');

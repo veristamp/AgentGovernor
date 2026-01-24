@@ -9,7 +9,6 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 import { CapabilityIndex } from './indices';
@@ -115,10 +114,8 @@ export class MCPClientManager {
 
             if (cfg.type === 'stdio') {
                 client = await this.connectStdio(serverKey, cfg);
-            } else if (cfg.type === 'sse') {
-                client = await this.connectSSE(serverKey, cfg);
-            } else if (cfg.type === 'streamable_http') {
-                 client = await this.connectStreamableHTTP(serverKey, cfg);
+            } else if (cfg.type === 'sse' || cfg.type === 'streamable_http') {
+                client = await this.connectStreamableHTTP(serverKey, cfg);
             } else {
                 throw new Error(`Unknown connection type: ${cfg.type}`);
             }
@@ -183,35 +180,6 @@ export class MCPClientManager {
             env: cfg.env,
             cwd: cfg.cwd,
         });
-
-        const client = new Client({
-            name: 'mcp-client-manager',
-            version: '1.0.0',
-        }, {
-            capabilities: {}
-        });
-
-        await client.connect(transport);
-        return client;
-    }
-
-    private async connectSSE(serverKey: string, cfg: ServerConfig): Promise<Client> {
-        if (!cfg.url) {
-            throw new Error(`sse server ${serverKey} requires 'url'`);
-        }
-
-        const transport = new SSEClientTransport(
-            new URL(cfg.url),
-            {
-                eventSourceInit: {
-                    // @ts-ignore - types might not match exactly depending on environment
-                    headers: cfg.headers
-                },
-                requestInit: {
-                     headers: cfg.headers
-                }
-            }
-        );
 
         const client = new Client({
             name: 'mcp-client-manager',

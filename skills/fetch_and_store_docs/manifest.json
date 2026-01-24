@@ -1,0 +1,16 @@
+{
+  "skillId": "fetch_and_store_docs",
+  "version": 1,
+  "description": "Fetch documentation for a specified library and store it in a file.",
+  "interfaces": [
+    "[object Object]"
+  ],
+  "bindings": {
+    "ctx": "context7"
+  },
+  "fanoutTools": [
+    "context7.resolve-library-id",
+    "context7.query-docs",
+    "filesystem.edit-file"
+  ]
+}

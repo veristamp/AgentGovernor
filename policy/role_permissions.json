@@ -3,13 +3,15 @@
     "*",
     "skills:docs-skill@1",
     "skills:fetch_documentation_and_store@1",
-    "skills:fetch_and_store_documentation@1"
+    "skills:fetch_and_store_documentation@1",
+    "skills:fetch_and_store_docs@1"
   ],
   "mcp:docs-curator": [
     "skills:docs-to-files@1",
     "skills:docs-skill@1",
     "skills:fetch_documentation_and_store@1",
-    "skills:fetch_and_store_documentation@1"
+    "skills:fetch_and_store_documentation@1",
+    "skills:fetch_and_store_docs@1"
   ],
   "mcp:repo-inspector": [
     "skills:repo-insight@1"

@@ -17,10 +17,10 @@ export class GcmRegistrySearch {
     /**
      * Loads signatures. If signature.json is missing, it auto-compiles from SKILL.md (Migration Layer).
      */
-    load(): void {
+    async load(): Promise<void> {
         const resolved = resolve(this.skillsDir);
         // Ensure legacy registry is loaded for fallback/migration
-        this.legacyRegistry.ingest();
+        await this.legacyRegistry.ingest();
         
         const entries = existsSync(resolved) ? readdirSync(resolved, { withFileTypes: true }) : [];
         this.signatures = [];
@@ -39,8 +39,8 @@ export class GcmRegistrySearch {
                 }
             } else {
                 // "Just-in-Time Compilation" from Legacy
-                const legacySkill = this.legacyRegistry.inspect(`skills:${entry.name}@1`) 
-                                 || this.legacyRegistry.listAll().find(s => s.skillId === entry.name);
+                const legacySkill = (await this.legacyRegistry.inspect(`skills:${entry.name}@1`))
+                                 || (await this.legacyRegistry.listAll()).find(s => s.skillId === entry.name);
                 
                 if (legacySkill) {
                     // Convert Legacy to Signature
@@ -102,7 +102,7 @@ export class GcmRegistrySearch {
         };
     }
     
-    listAll(): SkillSummary[] {
-        return this.legacyRegistry.listAll();
+    async listAll(): Promise<SkillSummary[]> {
+        return await this.legacyRegistry.listAll();
     }
 }
