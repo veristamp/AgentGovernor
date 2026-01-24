@@ -20,7 +20,7 @@ export class GcmRegistrySearch {
     load(): void {
         const resolved = resolve(this.skillsDir);
         // Ensure legacy registry is loaded for fallback/migration
-        this.legacyRegistry.load();
+        this.legacyRegistry.ingest();
         
         const entries = existsSync(resolved) ? readdirSync(resolved, { withFileTypes: true }) : [];
         this.signatures = [];

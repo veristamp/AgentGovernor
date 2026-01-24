@@ -16,8 +16,13 @@ export interface ServerConfig {
     // HTTP options
     url?: string;
     headers?: Record<string, string>;
+    
+    // Timeout options (for all types)
     timeout?: number;
     sseReadTimeout?: number;
+    
+    // Feature flags
+    terminateOnClose?: boolean;
 }
 
 export interface Config {
@@ -66,6 +71,10 @@ export interface ExecutionContext {
     identityId?: string;
     /** Scopes from JWT */
     scopes?: string[];
+    /** Roles from JWT (for RBAC) */
+    roles?: string[];
+    /** Organization ID from JWT */
+    orgId?: string;
     /** Mission ID for audit trail */
     missionId?: string;
 }

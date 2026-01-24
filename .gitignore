@@ -33,3 +33,8 @@ legacy
 docs
 workflows_gcm
 memory.jsonl
+.opencode
+.ruff_cache
+registry.sqlite
+registry.sqlite-shm
+registry.sqlite-wal

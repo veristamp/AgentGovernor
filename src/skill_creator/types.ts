@@ -1,3 +1,14 @@
+import type { PolicyEngine } from '../policy/engine';
+import type { LlmClient } from '../agent/llm_client';
+import type { ToolDescriptor } from '../tool_registry';
+
+export type { ToolDescriptor }; // Re-export for compatibility
+
+export interface SkillCreatorDependencies {
+    llm: LlmClient;
+    policy?: PolicyEngine;
+}
+
 export interface SkillCreationRequest {
     goal: string;
     constraints?: string[];
@@ -7,14 +18,6 @@ export interface SkillCreationRequest {
         orgId?: string;
         teamId?: string;
     };
-}
-
-export interface ToolDescriptor {
-    qualifiedName: string;
-    serverPrefix: string;
-    name: string;
-    description: string;
-    schema?: unknown;
 }
 
 export interface SkillDraft {

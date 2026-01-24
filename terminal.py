@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict
 from mcp.server.fastmcp import FastMCP, Context
@@ -8,6 +9,10 @@ import os
 import logging
 from pydantic import BaseModel, ValidationError
 from functools import wraps
+
+# Set event loop policy for Windows to avoid stdio pipe issues
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')

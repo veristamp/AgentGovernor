@@ -5,6 +5,10 @@ import { PolicyEngine } from '../src/policy';
 import { existsSync, readFileSync, rmSync } from 'fs';
 import { resolve } from 'path';
 
+// Use real LLM if key is present, otherwise fallback to fake
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const USE_REAL_LLM = !!OPENAI_API_KEY;
+
 class FakeSkillLlm extends LlmClient {
     private callCount = 0;
 
@@ -16,40 +20,48 @@ class FakeSkillLlm extends LlmClient {
         this.callCount += 1;
         const prompt = messages.map((message) => message.content).join('\n');
 
-        if (!prompt.includes('CONTEXT:') || !prompt.includes('Available Tools:')) {
-            throw new Error('Skill prompt missing RICECO context.');
+        // Phase 1: Tool Selection
+        if (this.callCount === 1) {
+            if (!prompt.includes('AVAILABLE TOOLS:')) {
+                throw new Error('Phase 1 prompt missing AVAILABLE TOOLS.');
+            }
+            
+            return JSON.stringify({
+                reasoning: "I need to fetch docs and write them to disk.",
+                selected_tools: [
+                    'context7.query-docs', 
+                    'context7.resolve-library-id', 
+                    'filesystem.write-file',
+                    'filesystem.create-directory'
+                ],
+                missing_capabilities: [],
+                questions: []
+            });
         }
 
-        if (this.callCount === 1) {
+        // Phase 2: Generation
+        if (this.callCount === 2) {
+            if (!prompt.includes('CONTEXT (Selected Tools):')) {
+                throw new Error('Phase 2 prompt missing CONTEXT (Selected Tools).');
+            }
+
             return JSON.stringify({
                 skill_id: 'docs-skill',
                 summary: 'Fetch docs and store them locally.',
                 interface: ['fetch_docs(library, topic, output_dir, file_name=None)'],
                 bindings: { ctx: 'context7', fs: 'filesystem' },
-                fanout_tools: ['context7.query-docs', 'filesystem.write-file'],
+                fanout_tools: [
+                    'context7.resolve-library-id',
+                    'context7.query-docs',
+                    'filesystem.create-directory',
+                    'filesystem.write-file',
+                ],
                 code: 'async def fetch_docs(library, topic, output_dir, file_name=None):\n    return {}',
                 questions: [],
             });
         }
 
-        if (!prompt.includes('Missing required tools')) {
-            throw new Error('Tool expansion loop did not add missing tools.');
-        }
-
-        return JSON.stringify({
-            skill_id: 'docs-skill',
-            summary: 'Fetch docs and store them locally.',
-            interface: ['fetch_docs(library, topic, output_dir, file_name=None)'],
-            bindings: { ctx: 'context7', fs: 'filesystem' },
-            fanout_tools: [
-                'context7.resolve-library-id',
-                'context7.query-docs',
-                'filesystem.create-directory',
-                'filesystem.write-file',
-            ],
-            code: 'async def fetch_docs(library, topic, output_dir, file_name=None):\n    return {}',
-            questions: [],
-        });
+        return '';
     }
 }
 
@@ -62,11 +74,27 @@ test('skill creator agent end-to-end', async () => {
     const policyPath = resolve('policy', 'policy_rules.json');
     const policyBefore = readFileSync(policyPath, 'utf-8');
 
+    // Ensure we point to the real tools directory for the registry to load
+    const toolsDir = resolve('tools');
+
+    let llmClient: LlmClient;
+    let modelName: string;
+
+    if (USE_REAL_LLM) {
+        console.log('Using Real OpenAI LLM for Skill Creator Test');
+        llmClient = new LlmClient('https://api.openai.com/v1', OPENAI_API_KEY!);
+        modelName = 'gpt-4o-mini';
+    } else {
+        console.log('Using Fake LLM for Skill Creator Test');
+        llmClient = new FakeSkillLlm();
+        modelName = 'test-model';
+    }
+
     const agent = new SkillCreatorAgent(
-        { llm: new FakeSkillLlm(), policy: new PolicyEngine() },
+        { llm: llmClient, policy: new PolicyEngine() },
         {
-            model: 'test-model',
-            toolsPath: 'tools_schema.json',
+            model: modelName,
+            toolsPath: toolsDir, // Points to real tools dir
             skillsDir: 'skills',
             policyFilePath: policyPath,
             rolePermissionsPath: 'policy/role_permissions.json',
@@ -83,25 +111,42 @@ test('skill creator agent end-to-end', async () => {
         },
     });
 
-    expect(result.skillRef).toBe('skills:docs-skill@1');
+    console.log(`[Test] Generated Skill Ref: ${result.skillRef}`);
+
+    expect(result.skillRef).toMatch(/^skills:.*@1$/);
     expect(result.rolesGranted).toContain('mcp:docs-curator');
-    expect(result.abacProposal?.action).toBe('skills:docs-skill@1');
+    expect(result.abacProposal?.action).toBe(result.skillRef);
     expect(result.abacProposal?.conditions.allowedOrgIds).toContain('org-1');
 
-    const manifestPath = resolve(skillDir, 'manifest.json');
-    const skillMdPath = resolve(skillDir, 'SKILL.md');
-    const libPath = resolve(skillDir, 'lib.py');
+    // Use the returned skillDir to verify files
+    const manifestPath = resolve(result.skillDir, 'manifest.json');
+    const skillMdPath = resolve(result.skillDir, 'SKILL.md');
+    const libPath = resolve(result.skillDir, 'lib.py');
 
     expect(existsSync(manifestPath)).toBe(true);
     expect(existsSync(skillMdPath)).toBe(true);
     expect(existsSync(libPath)).toBe(true);
 
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { fanoutTools?: string[] };
-    expect(manifest.fanoutTools).toContain('filesystem.write-file');
+    
+    // In real execution, exact tools might vary slightly depending on LLM choice, 
+    // but filesystem.write-file is essential for the goal.
+    expect(manifest.fanoutTools).toBeDefined();
+    // Check for either write-file or similar persistence
+    expect(manifest.fanoutTools?.some(t => t.includes('write-file') || t.includes('write'))).toBe(true);
 
     const skillMd = readFileSync(skillMdPath, 'utf-8');
     expect(skillMd).toContain('## Interface');
 
     const policyAfter = readFileSync(policyPath, 'utf-8');
+    // Policy should be updated (RBAC)
+    // Actually, updateRbac updates role_permissions.json, NOT policy_rules.json. 
+    // The test checks policy_rules.json equality, which is correct (ABAC is proposed, not written).
     expect(policyAfter).toBe(policyBefore);
-});
+    
+    // Cleanup generated skill
+    if (existsSync(result.skillDir)) {
+        rmSync(result.skillDir, { recursive: true, force: true });
+    }
+}, 60000); // Increase timeout for real LLM calls
+

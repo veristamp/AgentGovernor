@@ -27,4 +27,5 @@ export interface WorkflowSearchResult {
 
 export interface WorkflowRegistryOptions {
     baseDir?: string;
+    dbPath?: string;
 }

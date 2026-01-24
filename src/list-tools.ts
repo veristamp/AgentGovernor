@@ -233,6 +233,13 @@ const main = async () => {
   console.log(`[list-tools] === Done: ${allTools.length} tools from ${servers.size} servers ===`);
   console.log('[list-tools] Output: tools/ directory + tools_schema.json');
 
+  // New: Trigger Ingestion to SQLite
+  console.log('[list-tools] Syncing with Registry Database...');
+  const { getToolRegistry } = await import('./tool_registry/index.js');
+  const registry = getToolRegistry(TOOLS_DIR);
+  // Force re-ingest
+  registry.ingest(); 
+  
   await manager.close();
 };
 

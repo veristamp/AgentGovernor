@@ -9,7 +9,8 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { spawn } from 'child_process';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 import { CapabilityIndex } from './indices';
 import { loadConfig, defaultServerPrefix } from './config';
@@ -18,7 +19,7 @@ import type { Config, ServerConfig, Action, ExecutionContext, AuditEntry, ToolIn
 // Policy imports
 import { PolicyEngine, DEFAULT_RULES } from '../policy';
 import type { Identity, PolicyDecision } from '../policy';
-import { MCPResourceServer, extractBearerToken, type ValidationResult } from '../auth';
+import { MCPResourceServer, type ValidationResult } from '../auth';
 import { getAuditLogger, type AuditLogger } from '../audit';
 
 export interface MCPClientManagerOptions {
@@ -114,9 +115,10 @@ export class MCPClientManager {
 
             if (cfg.type === 'stdio') {
                 client = await this.connectStdio(serverKey, cfg);
-            } else if (cfg.type === 'streamable_http' || cfg.type === 'sse') {
-                console.warn(`[MCPClientManager] ${cfg.type} not yet implemented for ${serverKey}`);
-                return;
+            } else if (cfg.type === 'sse') {
+                client = await this.connectSSE(serverKey, cfg);
+            } else if (cfg.type === 'streamable_http') {
+                 client = await this.connectStreamableHTTP(serverKey, cfg);
             } else {
                 throw new Error(`Unknown connection type: ${cfg.type}`);
             }
@@ -185,6 +187,62 @@ export class MCPClientManager {
         const client = new Client({
             name: 'mcp-client-manager',
             version: '1.0.0',
+        }, {
+            capabilities: {}
+        });
+
+        await client.connect(transport);
+        return client;
+    }
+
+    private async connectSSE(serverKey: string, cfg: ServerConfig): Promise<Client> {
+        if (!cfg.url) {
+            throw new Error(`sse server ${serverKey} requires 'url'`);
+        }
+
+        const transport = new SSEClientTransport(
+            new URL(cfg.url),
+            {
+                eventSourceInit: {
+                    // @ts-ignore - types might not match exactly depending on environment
+                    headers: cfg.headers
+                },
+                requestInit: {
+                     headers: cfg.headers
+                }
+            }
+        );
+
+        const client = new Client({
+            name: 'mcp-client-manager',
+            version: '1.0.0',
+        }, {
+            capabilities: {}
+        });
+
+        await client.connect(transport);
+        return client;
+    }
+
+    private async connectStreamableHTTP(serverKey: string, cfg: ServerConfig): Promise<Client> {
+        if (!cfg.url) {
+            throw new Error(`streamable_http server ${serverKey} requires 'url'`);
+        }
+
+        const transport = new StreamableHTTPClientTransport(
+            new URL(cfg.url),
+            {
+                requestInit: {
+                    headers: cfg.headers
+                }
+            }
+        );
+
+        const client = new Client({
+            name: 'mcp-client-manager',
+            version: '1.0.0',
+        }, {
+            capabilities: {}
         });
 
         await client.connect(transport);
@@ -197,6 +255,7 @@ export class MCPClientManager {
             const message = (err as { message?: string }).message || String(err);
             if (code === -32601) return true;
             if (message.toLowerCase().includes('method not found')) return true;
+            if (message.toLowerCase().includes('methodnotfound')) return true;
         }
         return false;
     }
@@ -282,11 +341,17 @@ export class MCPClientManager {
                     id: validationResult.clientId ?? 'unknown',
                     type: 'agent',
                     scopes: validationResult.scopes,
+                    roles: validationResult.roles ?? [], // Pass roles for RBAC, default to empty array
+                    orgId: validationResult.orgId,
                 };
 
                 // Update context with identity info
-                context.identityId = identity.id;
-                context.scopes = identity.scopes;
+                if (identity) {
+                    context.identityId = identity.id;
+                    context.scopes = identity.scopes;
+                    context.roles = identity.roles;
+                    context.orgId = identity.orgId;
+                }
 
             } catch (e) {
                 this.logAudit({
@@ -319,10 +384,6 @@ export class MCPClientManager {
                 throw new Error(`Forbidden: ${decision.reason}`);
             }
         }
-
-        // 3. Check kill switch (for high-risk operations, use requireActiveCheck)
-        // Note: Kill switch requires calling the auth server, so only do this for sensitive ops
-        // For now, we skip this check - it can be added for specific high-risk actions
 
         // ========== Execute Action ==========
 
@@ -385,11 +446,15 @@ export class MCPClientManager {
     private formatToolResult(result: unknown): unknown {
         if (result && typeof result === 'object' && 'content' in result) {
             const content = (result as { content: unknown[] }).content;
+            
             if (Array.isArray(content)) {
                 const texts = content
-                    .filter((c: unknown) => c && typeof c === 'object' && 'text' in c)
+                    .filter((c: unknown) => c && typeof c === 'object' && 'type' in c && (c as {type:string}).type === 'text')
                     .map((c: unknown) => (c as { text: string }).text);
-                return texts.join('\n');
+                
+                if (texts.length > 0) return texts.join('\n');
+                
+                return content;
             }
         }
         return result;

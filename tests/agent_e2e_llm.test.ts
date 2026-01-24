@@ -39,4 +39,4 @@ test('agent end-to-end with local LLM', async () => {
     expect(matchedSkill).toBe(true);
     expect(manifest.toolCalls.length).toBeGreaterThan(0);
 
-});
+}, 30000);

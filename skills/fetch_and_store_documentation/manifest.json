@@ -1,0 +1,10 @@
+{
+  "skillId": "fetch_and_store_documentation",
+  "version": 1,
+  "description": "Fetch documentation from a URL and store it in a file.",
+  "interfaces": [
+    "async def fetch_and_store(url: str, file_path: str) -> None"
+  ],
+  "bindings": {},
+  "fanoutTools": []
+}

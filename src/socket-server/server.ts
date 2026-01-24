@@ -8,6 +8,7 @@
 import { createServer, type Server, type Socket } from 'net';
 import { unlinkSync, existsSync } from 'fs';
 import { MCPClientManager } from '../mcp-client/manager';
+import { GcmRegistrySearch } from '../skills_registry/search';
 import {
     parseRequest,
     createResponse,
@@ -31,11 +32,14 @@ export class SocketServer {
     private manager: MCPClientManager;
     private context: ExecutionContext;
     private connections: Set<Socket> = new Set();
+    private skillRegistry: GcmRegistrySearch;
 
     constructor(options: SocketServerOptions) {
         this.socketPath = options.socketPath;
         this.manager = options.manager;
         this.context = options.context || {};
+        this.skillRegistry = new GcmRegistrySearch();
+        this.skillRegistry.load();
     }
 
     async start(): Promise<void> {
@@ -143,6 +147,45 @@ export class SocketServer {
             // Return available tool names
             const tools = this.manager.getToolNames();
             return createResponse(request.id, { tools });
+        }
+
+        // Handle Skill Discovery
+        if (request.method === '__tool_search__') {
+            try {
+                const query = String(request.params?.query || '');
+                const limit = Number(request.params?.limit || 5);
+                
+                // Use GcmRegistrySearch
+                const result = this.skillRegistry.search(query, limit);
+                
+                // Return result wrapped in expected structure
+                return createResponse(request.id, { result });
+            } catch (e) {
+                console.error(`[SocketServer] Error in __tool_search__:`, e);
+                return createError(request.id, ErrorCodes.INTERNAL_ERROR, String(e));
+            }
+        }
+
+        if (request.method === '__inspect_skill__') {
+            try {
+                const skillRef = String(request.params?.skill || '');
+                
+                // Use legacyRegistry inspection logic which is wrapped by GcmRegistrySearch
+                // But GcmRegistrySearch class doesn't expose inspect directly, it exposes legacyRegistry
+                const summary = this.skillRegistry.legacyRegistry.inspect(skillRef);
+                
+                // Return metadata wrapped in expected structure
+                // skill_discovery.py expects { "skill": { ... } }
+                if (summary) {
+                     return createResponse(request.id, { skill: summary });
+                } else {
+                     return createResponse(request.id, { skill: null });
+                }
+
+            } catch (e) {
+                console.error(`[SocketServer] Error in __inspect_skill__:`, e);
+                 return createError(request.id, ErrorCodes.INTERNAL_ERROR, String(e));
+            }
         }
 
         // Route to MCPClientManager

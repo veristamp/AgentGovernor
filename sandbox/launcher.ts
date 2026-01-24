@@ -99,7 +99,9 @@ export async function launchSandbox(options: LaunchOptions): Promise<LaunchResul
 
         // Timeout handling (nsjail has its own, but this is a fallback)
         setTimeout(() => {
-            child.kill('SIGKILL');
+            if (!child.killed) {
+                child.kill('SIGKILL');
+            }
         }, (timeout + 5) * 1000);
     });
 }
@@ -131,6 +133,7 @@ export async function launchUnsafe(options: LaunchOptions): Promise<LaunchResult
     const startTime = Date.now();
 
     return new Promise((promiseResolve, promiseReject) => {
+        // Use uv run to handle python environment
         const child = spawn('uv', ['run', resolvePath(runtimePath, 'runner.py')], {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: {
