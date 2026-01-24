@@ -50,6 +50,7 @@ export async function analyzeCode(code: string): Promise<Manifest> {
                 const result = JSON.parse(stdout) as {
                     manifest: {
                         tools: string[];
+                        skills: string[];
                         tool_calls: Array<{
                             tool: string;
                             line: number;
@@ -70,6 +71,7 @@ export async function analyzeCode(code: string): Promise<Manifest> {
                 // Convert snake_case to camelCase
                 const manifest: Manifest = {
                     tools: result.manifest.tools,
+                    skills: result.manifest.skills,
                     toolCalls: result.manifest.tool_calls.map((tc) => ({
                         tool: tc.tool,
                         line: tc.line,
@@ -83,6 +85,7 @@ export async function analyzeCode(code: string): Promise<Manifest> {
                     errors: result.manifest.errors,
                     warnings: result.manifest.warnings,
                 };
+
 
                 resolve(manifest);
             } catch (e) {

@@ -1,7 +1,8 @@
 {
-  "qualified_name": "modelcontextprotocol-python-sdk.docs-semantic-search",
-  "server_prefix": "modelcontextprotocol-python-sdk",
+  "qualifiedName": "modelcontextprotocol-python-sdk.docs-semantic-search",
+  "serverPrefix": "modelcontextprotocol-python-sdk",
   "name": "docs-semantic-search",
+  "originalName": "docs-semantic-search",
   "description": "Search through repository modelcontextprotocol/python-sdk documentation using semantic similarity to find relevant information, guides, API documentation, README content, and explanatory materials. This tool specifically targets documentation files (markdown, rst, etc.) rather than code, making it ideal for understanding project setup, architecture decisions, usage instructions, and conceptual explanations. Use this when you need context about how the repository works rather than examining the actual code implementation.",
   "schema": {
     "type": "object",

@@ -4,6 +4,7 @@
 
 export { PolicyEngine, DEFAULT_RULES } from './engine';
 export * from './types';
+export * from './roles';
 
 // Re-export from auth module for backwards compatibility
 export { MCPResourceServer as AuthSDK } from '../auth';

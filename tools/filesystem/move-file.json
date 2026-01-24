@@ -1,0 +1,25 @@
+{
+  "qualifiedName": "filesystem.move-file",
+  "serverPrefix": "filesystem",
+  "name": "move-file",
+  "originalName": "move-file",
+  "description": "Move or rename files and directories.\nFails if destination exists. Only works within allowed directories.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "Source path"
+      },
+      "destination": {
+        "type": "string",
+        "description": "Destination path"
+      }
+    },
+    "required": [
+      "source",
+      "destination"
+    ],
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

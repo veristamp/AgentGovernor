@@ -11,6 +11,14 @@
  * | **MCPAgentClient** | AI agents, backend services | `client_credentials` |
  * | **MCPResourceServer** | Token validation | JWT or introspection |
  *
+ * Features:
+ * - Budgeted Dynamic Client Registration (REG_JWT)
+ * - Token acquisition with audience support (RFC 8707)
+ * - Token introspection (RFC 7662)
+ * - Protected Resource Metadata discovery (RFC 9728)
+ * - Rate limit handling
+ * - Public client (PKCE) support
+ *
  * @example Agent Registration & Token Acquisition
  * ```typescript
  * import { MCPAgentClient } from './auth';
@@ -74,6 +82,9 @@ export type {
     RegistrationResponse,
     IntrospectionResponse,
     ClientStatusResponse,
+    ProtectedResourceMetadata,
+    RateLimitInfo,
+    ValidationErrorCode,
 } from './types';
 
 export {
@@ -104,8 +115,11 @@ export {
     extractScopes,
 } from './jwt';
 
+// JWKS and signature verification
+export { JWKSManager, verifyJWT } from './jwks';
+
 // Clients
-export { MCPAgentClient } from './agent-client';
+export { MCPAgentClient, type RegisterOptions } from './agent-client';
 export { MCPResourceServer, type ValidateTokenOptions } from './resource-server';
 export { MCPAdminClient, type CreateInviteParams, type InviteResult } from './admin-client';
 

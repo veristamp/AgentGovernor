@@ -80,4 +80,27 @@ export class CapabilityIndex {
     hasTool(qualifiedName: string): boolean {
         return this.tools.has(qualifiedName);
     }
+
+    /** Get tool metadata by qualified name */
+    getTool(qualifiedName: string): ToolInfo | undefined {
+        return this.tools.get(qualifiedName);
+    }
+
+    /** Simple substring search across qualified tool names and descriptions */
+    searchTools(query: string, limit: number = 50): ToolInfo[] {
+        const q = query.trim().toLowerCase();
+        if (!q) return [];
+
+        const results: ToolInfo[] = [];
+        for (const tool of this.tools.values()) {
+            const name = tool.name.toLowerCase();
+            const desc = (tool.description ?? '').toLowerCase();
+            if (name.includes(q) || desc.includes(q)) {
+                results.push(tool);
+                if (results.length >= limit) break;
+            }
+        }
+        return results;
+    }
 }
+

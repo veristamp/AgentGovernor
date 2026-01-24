@@ -1,4 +1,4 @@
-# Modelcontextprotocol-Python-Sdk Tools
+# Modelcontextprotocol-python-sdk Tools
 
 This server provides 6 tools.
 

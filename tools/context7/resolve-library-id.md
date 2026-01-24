@@ -1,18 +1,18 @@
 # context7.resolve-library-id
 
-> Resolves a package/product name to a Context7-compatible library ID and returns a list of matching libraries.
+> Resolves a package/product name to a Context7-compatible library ID and returns matching libraries.
 
 ## Signature
 
 ```python
-await resolve-library-id(libraryName: str)
+await resolve-library-id(query: str, libraryName: str)
 ```
 
 ## Description
 
-Resolves a package/product name to a Context7-compatible library ID and returns a list of matching libraries.
+Resolves a package/product name to a Context7-compatible library ID and returns matching libraries.
 
-You MUST call this function before 'get-library-docs' to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.
+You MUST call this function before 'query-docs' to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.
 
 Selection Process:
 1. Analyze the query to understand what library/package the user is looking for
@@ -31,10 +31,13 @@ Response Format:
 
 For ambiguous queries, request clarification before proceeding with a best-guess match.
 
+IMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best result you have.
+
 ## Parameters
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
+| `query` | string | ✓ | The user's original question or task. This is used to rank library results by relevance to what the user is trying to accomplish. IMPORTANT: Do not include any sensitive or confidential information such as API keys, passwords, credentials, or personal data in your query. |
 | `libraryName` | string | ✓ | Library name to search for and retrieve a Context7-compatible library ID. |
 
 ## Usage Example

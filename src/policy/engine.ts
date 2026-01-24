@@ -12,6 +12,7 @@ import type {
     PolicyRequest,
     Manifest,
 } from './types';
+import { checkRoleAccess } from './roles';
 
 export class PolicyEngine {
     private rules: PolicyRule[] = [];
@@ -22,6 +23,19 @@ export class PolicyEngine {
             this.loadRules(rules);
         }
     }
+
+    loadRulesFromFile(filePath: string): void {
+        const { readFileSync, existsSync } = require('fs') as typeof import('fs');
+        if (!existsSync(filePath)) {
+            return;
+        }
+        const raw = readFileSync(filePath, 'utf-8');
+        const parsed = JSON.parse(raw) as { rules?: PolicyRule[] };
+        if (parsed.rules) {
+            this.loadRules(parsed.rules);
+        }
+    }
+
 
     /**
      * Load policy rules. Higher priority rules are evaluated first.
@@ -60,30 +74,20 @@ export class PolicyEngine {
             };
         }
 
-        // 3. Check scope (quick check before full policy eval)
-        if (!this.hasScope(identity, action)) {
-            return {
-                allowed: false,
-                reason: `Missing required scope for: ${action}`,
-            };
-        }
+        // 3. Check permission via RBAC (roles) or OAuth scopes
+        const hasRbacPermission = this.hasPermission(identity, action);
 
-        // 4. Evaluate rules
+        // 4. Evaluate explicit rules (deny rules take precedence)
         for (const rule of this.rules) {
             const match = this.matchesRule(rule, request);
             if (match) {
                 // Check conditions
                 const conditionResult = this.checkConditions(rule, request);
                 if (conditionResult !== true) {
-                    if (rule.effect === 'allow') {
-                        // Allow rule didn't match conditions - continue to next rule
-                        continue;
-                    }
-                    // Deny rule matched but condition failed - skip
-                    continue;
+                    continue; // Conditions not met, skip this rule
                 }
 
-                // Rule matched and conditions passed
+                // Explicit deny rule - always blocks
                 if (rule.effect === 'deny') {
                     return {
                         allowed: false,
@@ -92,34 +96,45 @@ export class PolicyEngine {
                     };
                 }
 
-                // Check rate limit if specified
-                if (rule.conditions?.rateLimit) {
-                    const rateLimitResult = this.checkRateLimit(
-                        identity.id,
-                        action,
-                        rule.conditions.rateLimit
-                    );
-                    if (!rateLimitResult.allowed) {
-                        return {
-                            allowed: false,
-                            matchedRule: rule.id,
-                            reason: 'Rate limit exceeded',
-                            rateLimit: rateLimitResult.info,
-                        };
+                // Explicit allow rule - check rate limit and allow
+                if (rule.effect === 'allow') {
+                    if (rule.conditions?.rateLimit) {
+                        const rateLimitResult = this.checkRateLimit(
+                            identity.id,
+                            action,
+                            rule.conditions.rateLimit
+                        );
+                        if (!rateLimitResult.allowed) {
+                            return {
+                                allowed: false,
+                                matchedRule: rule.id,
+                                reason: 'Rate limit exceeded',
+                                rateLimit: rateLimitResult.info,
+                            };
+                        }
                     }
-                }
 
-                return {
-                    allowed: true,
-                    matchedRule: rule.id,
-                };
+                    return {
+                        allowed: true,
+                        matchedRule: rule.id,
+                    };
+                }
             }
         }
 
-        // Default deny
+        // 5. If RBAC granted permission and no deny rule matched, allow
+        if (hasRbacPermission) {
+            return {
+                allowed: true,
+                matchedRule: 'rbac',
+                reason: 'Allowed by RBAC roles',
+            };
+        }
+
+        // Default deny - no RBAC permission and no matching allow rule
         return {
             allowed: false,
-            reason: 'No matching allow rule found',
+            reason: `Missing required permission for: ${action}`,
         };
     }
 
@@ -127,21 +142,21 @@ export class PolicyEngine {
      * Check multiple actions at once (for manifest pre-check).
      */
     checkManifest(identity: Identity, manifest: Manifest): PolicyDecision[] {
-        return manifest.tools.map((tool) =>
-            this.check({ identity, action: tool })
+        return manifest.skills.map((skill) =>
+            this.check({ identity, action: skill })
         );
     }
 
     /**
-     * Quick check if all manifest tools are allowed.
+     * Quick check if all manifest skills are allowed.
      */
     isManifestAllowed(identity: Identity, manifest: Manifest): { allowed: boolean; violations: string[] } {
         const violations: string[] = [];
 
-        for (const tool of manifest.tools) {
-            const decision = this.check({ identity, action: tool });
+        for (const skill of manifest.skills) {
+            const decision = this.check({ identity, action: skill });
             if (!decision.allowed) {
-                violations.push(`${tool}: ${decision.reason}`);
+                violations.push(`${skill}: ${decision.reason}`);
             }
         }
 
@@ -151,7 +166,25 @@ export class PolicyEngine {
         };
     }
 
+
     // ==================== Private Methods ====================
+
+    /**
+     * Check if identity has permission to perform action.
+     * Uses RBAC first (roles -> permissions), then falls back to OAuth scopes.
+     */
+    private hasPermission(identity: Identity, action: string): boolean {
+        // 1. Check RBAC (roles mapped to tool permissions)
+        if (identity.roles && identity.roles.length > 0) {
+            const rbacResult = checkRoleAccess(identity.roles, action);
+            if (rbacResult.allowed) {
+                return true;
+            }
+        }
+
+        // 2. Fallback to OAuth scopes (for compatibility)
+        return this.hasScope(identity, action);
+    }
 
     private hasScope(identity: Identity, action: string): boolean {
         // Check exact match
@@ -248,6 +281,20 @@ export class PolicyEngine {
             }
         }
 
+        // Check allowed org IDs
+        if (conditions.allowedOrgIds && conditions.allowedOrgIds.length > 0) {
+            if (!identity.orgId || !conditions.allowedOrgIds.includes(identity.orgId)) {
+                return 'Organization not allowed';
+            }
+        }
+
+        // Check allowed team IDs
+        if (conditions.allowedTeamIds && conditions.allowedTeamIds.length > 0) {
+            if (!identity.teamId || !conditions.allowedTeamIds.includes(identity.teamId)) {
+                return 'Team not allowed';
+            }
+        }
+
         // Check time of day
         if (conditions.allowedHours) {
             const hour = new Date().getHours();
@@ -265,6 +312,7 @@ export class PolicyEngine {
         }
 
         return true;
+
     }
 
     private checkRateLimit(

@@ -2,16 +2,20 @@
 Workflow using Skills Layer
 
 This workflow demonstrates the proper layered architecture:
-- Uses `from skills import filesystem` (NOT raw mcp.use)
+- Uses `import skills; filesystem = skills.load("filesystem")` (NOT raw mcp.use)
 - Skills handle parsing/formatting
 - LLM never sees raw tool names
 
 The binding pattern routes all calls through the Policy Gate.
 """
-from skills import filesystem
+import skills
+from typing import Any
 
 async def main():
     print("=== Starting Skill-Based Workflow ===")
+
+    skills_api: Any = skills
+    filesystem = skills_api.load("filesystem")
     
     # Step 1: List files using skill (NOT raw mcp.use)
     print("\n[1/3] Listing files using filesystem skill...")

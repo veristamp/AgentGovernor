@@ -82,8 +82,8 @@ function parseServerConfig(raw: Record<string, unknown>, configPath: string): Se
 }
 
 export function defaultServerPrefix(serverKey: string, _serverInfo: unknown): string {
-    // Normalize the prefix: lowercase, replace spaces with underscores
-    return serverKey.toLowerCase().replace(/\s+/g, '_');
+    // Normalize the prefix: lowercase, replace spaces with hyphens
+    return serverKey.toLowerCase().replace(/\s+/g, '-');
 }
 
 /**

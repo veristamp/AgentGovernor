@@ -1,0 +1,35 @@
+{
+  "qualifiedName": "terminal.run-command",
+  "serverPrefix": "terminal",
+  "name": "run-command",
+  "originalName": "run_command",
+  "description": "Run a shell command asynchronously with a timeout.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "title": "Command",
+        "type": "string"
+      },
+      "directory": {
+        "default": "~",
+        "title": "Directory",
+        "type": "string"
+      },
+      "timeout": {
+        "default": 120,
+        "title": "Timeout",
+        "type": "number"
+      },
+      "truncate_after": {
+        "default": 16000,
+        "title": "Truncate After",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "command"
+    ],
+    "title": "run_commandArguments"
+  }
+}

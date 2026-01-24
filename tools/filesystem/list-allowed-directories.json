@@ -1,0 +1,11 @@
+{
+  "qualifiedName": "filesystem.list-allowed-directories",
+  "serverPrefix": "filesystem",
+  "name": "list-allowed-directories",
+  "originalName": "list-allowed-directories",
+  "description": "Returns the list of directories this server can access.",
+  "schema": {
+    "type": "object",
+    "properties": {}
+  }
+}

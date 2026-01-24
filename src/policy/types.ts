@@ -6,14 +6,18 @@
 
 /** Identity information from JWT */
 export interface Identity {
-    /** Unique identity ID (e.g., "agent:123", "user:456") */
+    /** Unique identity ID (e.g., "mcp_xxx", "user:456") */
     id: string;
     /** Type of identity */
     type: 'agent' | 'user' | 'service';
-    /** Scopes granted to this identity */
+    /** Roles from JWT (e.g., "mcp:rag-agent", "mcp:admin") */
+    roles: string[];
+    /** Scopes granted to this identity (OAuth2 scope claim) */
     scopes: string[];
     /** Organization/tenant ID */
     orgId?: string;
+    /** Team ID within an org */
+    teamId?: string;
     /** Security level (0-10) - optional, defaults to 0 */
     securityLevel?: number;
     /** Whether identity has been revoked */
@@ -21,6 +25,7 @@ export interface Identity {
     /** JWT expiration timestamp */
     expiresAt?: number;
 }
+
 
 /** A policy rule */
 export interface PolicyRule {
@@ -50,11 +55,16 @@ export interface PolicyConditions {
     requiredScopes?: string[];
     /** Organization must match */
     orgMatch?: boolean;
+    /** Allowed org IDs */
+    allowedOrgIds?: string[];
+    /** Allowed team IDs */
+    allowedTeamIds?: string[];
     /** Time-of-day restrictions (24h format) */
     allowedHours?: { start: number; end: number };
     /** Rate limit (calls per minute) */
     rateLimit?: number;
 }
+
 
 /** Result of policy evaluation */
 export interface PolicyDecision {
@@ -74,6 +84,7 @@ export interface PolicyDecision {
 /** Manifest from static auditor */
 export interface Manifest {
     tools: string[];
+    skills: string[];
     toolCalls: Array<{
         tool: string;
         line: number;
@@ -87,6 +98,7 @@ export interface Manifest {
     errors: string[];
     warnings: string[];
 }
+
 
 /** Policy check request */
 export interface PolicyRequest {

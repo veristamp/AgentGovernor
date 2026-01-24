@@ -2,6 +2,13 @@
  * MCP Identity SDK - Agent Client
  *
  * Client for MCP agents to register and obtain tokens.
+ * 
+ * Features:
+ * - Registration with REG_JWT invite tokens
+ * - Token acquisition with audience support (RFC 8707)
+ * - Automatic token refresh
+ * - Rate limit handling
+ * - Public client (PKCE) support
  *
  * @example
  * ```typescript
@@ -24,15 +31,29 @@ import type {
     MCPToken,
     TokenResponse,
     RegistrationResponse,
+    IntrospectionResponse,
+    ProtectedResourceMetadata,
 } from './types';
 import { MCPRegistrationError, MCPAuthError, MCPRateLimitError } from './errors';
 import { isTokenExpired } from './types';
+
+/**
+ * Registration options for public clients.
+ */
+export interface RegisterOptions {
+    /** Whether to register as a public client (PKCE required, no secret) */
+    isPublic?: boolean;
+    /** Optional metadata to attach */
+    metadata?: Record<string, unknown>;
+    /** Redirect URIs (for public clients with auth code flow) */
+    redirectUris?: string[];
+}
 
 export class MCPAgentClient {
     private authServer: string;
     private regJwt?: string;
     private clientId?: string;
-    private clientSecret?: string;
+    private clientSecret?: string | null;
     private timeout: number;
     private currentToken?: MCPToken;
     private credentials?: MCPCredentials;
@@ -49,20 +70,33 @@ export class MCPAgentClient {
      * Register a new MCP machine client.
      *
      * @param clientName - Human-readable name for this agent
-     * @param metadata - Optional metadata to attach
+     * @param options - Registration options (metadata, isPublic, etc.)
      * @returns MCPCredentials with clientId and clientSecret
      */
     async register(
         clientName: string,
-        metadata?: Record<string, unknown>
+        options?: RegisterOptions | Record<string, unknown>
     ): Promise<MCPCredentials> {
         if (!this.regJwt) {
             throw new MCPRegistrationError('Registration requires a REG_JWT invite token');
         }
 
-        const body: Record<string, unknown> = { client_name: clientName };
-        if (metadata) {
-            body.metadata = metadata;
+        // Handle both old and new API
+        const opts: RegisterOptions = options && 'isPublic' in options
+            ? options as RegisterOptions
+            : { metadata: options as Record<string, unknown> };
+
+        const body: Record<string, unknown> = {
+            client_name: clientName,
+            is_public: opts.isPublic ?? false,
+        };
+
+        if (opts.metadata) {
+            body.metadata = opts.metadata;
+        }
+
+        if (opts.redirectUris) {
+            body.redirect_uris = opts.redirectUris;
         }
 
         const response = await fetch(`${this.authServer}/api/mcp/register`, {
@@ -81,16 +115,28 @@ export class MCPAgentClient {
 
             this.credentials = {
                 clientId: data.client_id,
-                clientSecret: data.client_secret,
+                clientSecret: data.client_secret ?? '',
                 allowedScopes: data.allowed_scopes ?? [],
                 allowedAudiences: data.allowed_audiences ?? [],
-                orgId: data.org_id,
+                allowedRoles: data.allowed_roles ?? [],
+                orgId: data.organization_id ?? data.org_id,
+                isPublic: data.is_public,
             };
 
             this.clientId = this.credentials.clientId;
             this.clientSecret = this.credentials.clientSecret;
 
             return this.credentials;
+        }
+
+        // Handle rate limiting
+        if (response.status === 429) {
+            const errorData = await response.json().catch(() => ({})) as Record<string, unknown>;
+            const retryAfter = (errorData.retry_after as number) ?? 60;
+            throw new MCPRateLimitError(
+                (errorData.error_description as string) ?? 'Registration rate limit exceeded',
+                retryAfter
+            );
         }
 
         const errorData = await response.json().catch(() => ({})) as Record<string, string>;
@@ -169,7 +215,7 @@ export class MCPAgentClient {
 
         // Handle rate limiting (429 Too Many Requests)
         if (response.status === 429) {
-            const retryAfter = (errorData.retryAfter as number) ?? 60;
+            const retryAfter = (errorData.retry_after as number) ?? (errorData.retryAfter as number) ?? 60;
             throw new MCPRateLimitError(
                 (errorData.error_description as string) ?? 'Rate limit exceeded',
                 retryAfter
@@ -180,6 +226,89 @@ export class MCPAgentClient {
             (errorData.error_description as string) ?? `Token request failed: ${response.status}`,
             errorData.error as string
         );
+    }
+
+    /**
+     * Introspect a token using RFC 7662 endpoint.
+     * Uses Better Auth's built-in introspection at /api/auth/oauth2/introspect.
+     * 
+     * @param token - The token to introspect
+     * @returns Introspection result
+     */
+    async introspectToken(token: string): Promise<{
+        active: boolean;
+        clientId?: string;
+        scope?: string;
+        exp?: number;
+        orgId?: string;
+        roles?: string[];
+    }> {
+        if (!this.clientId || !this.clientSecret) {
+            throw new MCPAuthError('Client credentials required for introspection');
+        }
+
+        const response = await fetch(`${this.authServer}/api/auth/oauth2/introspect`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                token,
+                client_id: this.clientId,
+                client_secret: this.clientSecret,
+            }),
+            signal: AbortSignal.timeout(this.timeout),
+        });
+
+        // Handle non-JSON responses gracefully
+        const text = await response.text();
+        let data: IntrospectionResponse;
+        try {
+            data = JSON.parse(text) as IntrospectionResponse;
+        } catch {
+            // If parsing fails, return inactive (common for error responses)
+            return { active: false };
+        }
+
+        return {
+            active: data.active,
+            clientId: data.client_id ?? data.sub,
+            scope: data.scope,
+            exp: data.exp,
+            orgId: data.org_id,
+            roles: data.roles,
+        };
+    }
+
+    /**
+     * Discover protected resource metadata (RFC 9728).
+     * 
+     * @param resourceUri - The resource URI (defaults to auth server)
+     * @returns Protected resource metadata
+     */
+    async discoverResourceMetadata(resourceUri?: string): Promise<{
+        resource: string;
+        authorizationServers: string[];
+        scopesSupported?: string[];
+        introspectionEndpoint?: string;
+    }> {
+        const baseUrl = resourceUri ?? this.authServer;
+        const response = await fetch(`${baseUrl}/.well-known/oauth-protected-resource`, {
+            signal: AbortSignal.timeout(this.timeout),
+        });
+
+        if (!response.ok) {
+            throw new MCPAuthError(`Failed to discover resource metadata: ${response.status}`);
+        }
+
+        const data = (await response.json()) as ProtectedResourceMetadata;
+
+        return {
+            resource: data.resource,
+            authorizationServers: data.authorization_servers,
+            scopesSupported: data.scopes_supported,
+            introspectionEndpoint: data.introspection_endpoint,
+        };
     }
 
     /**
@@ -194,5 +323,19 @@ export class MCPAgentClient {
      */
     getClientId(): string | undefined {
         return this.clientId;
+    }
+
+    /**
+     * Check if this is a public client (no secret, PKCE required).
+     */
+    isPublicClient(): boolean {
+        return this.credentials?.isPublic ?? false;
+    }
+
+    /**
+     * Get the allowed roles for this client.
+     */
+    getAllowedRoles(): string[] {
+        return this.credentials?.allowedRoles ?? [];
     }
 }

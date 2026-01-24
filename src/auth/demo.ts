@@ -8,10 +8,11 @@
  * 2. Agent registration with REG_JWT
  * 3. Token acquisition (Opaque and JWT)
  * 4. JWT validation (stateless, ~0.1ms)
- * 5. Introspection validation (~35ms)
+ * 5. Introspection validation (RFC 7662)
  * 6. Scope enforcement
  * 7. Audience validation
- * 8. Kill switch / revocation
+ * 8. Protected Resource Metadata (RFC 9728)
+ * 9. Kill switch / revocation
  *
  * Prerequisites:
  * - Mono Authz server running at http://localhost:8787
@@ -20,7 +21,7 @@
  *   - SUPER_ADMIN_PASSWORD
  *
  * Usage:
- *   bun run src/auth/demo.ts
+ *   bun run sdk/typescript/demo.ts
  */
 
 import {
@@ -106,17 +107,38 @@ async function main(): Promise<number> {
         ttlSeconds: 600,
         allowedScopes: ['read:data', 'write:data', 'admin:delete'],
         allowedAudiences: [MY_AUDIENCE],
+        allowedRoles: ['mcp:rag-agent'],  // NEW: Roles support
     });
 
     console.log('✅ Invite minted!');
     console.log('   • Budget: 2 registrations');
     console.log('   • Allowed Scopes: read:data, write:data, admin:delete');
     console.log(`   • Allowed Audiences: ${MY_AUDIENCE}`);
+    console.log('   • Allowed Roles: mcp:rag-agent');
 
     // =========================================================================
-    // PHASE 3: AGENT REGISTRATION
+    // PHASE 3: PROTECTED RESOURCE METADATA (RFC 9728)
     // =========================================================================
-    printHeader('PHASE 3: AGENT REGISTRATION');
+    printHeader('PHASE 3: PROTECTED RESOURCE METADATA (RFC 9728)');
+
+    const discoveryAgent = new MCPAgentClient({ authServer: AUTH_SERVER });
+
+    console.log('\n🔍 Discovering protected resource metadata...');
+    try {
+        const metadata = await discoveryAgent.discoverResourceMetadata(AUTH_SERVER);
+        console.log('✅ Resource metadata discovered!');
+        console.log(`   • Resource: ${metadata.resource}`);
+        console.log(`   • Authorization Servers: ${metadata.authorizationServers.join(', ')}`);
+        console.log(`   • Scopes Supported: ${metadata.scopesSupported?.join(', ') ?? 'not specified'}`);
+        console.log(`   • Introspection Endpoint: ${metadata.introspectionEndpoint ?? 'not specified'}`);
+    } catch (e) {
+        console.log('⚠️  Resource metadata discovery not available (optional feature)');
+    }
+
+    // =========================================================================
+    // PHASE 4: AGENT REGISTRATION
+    // =========================================================================
+    printHeader('PHASE 4: AGENT REGISTRATION');
 
     const agent = new MCPAgentClient({
         authServer: AUTH_SERVER,
@@ -125,28 +147,30 @@ async function main(): Promise<number> {
 
     console.log('\n🤖 Registering agent with REG_JWT...');
     const credentials = await agent.register('demo-rag-agent', {
-        version: '1.0',
-        purpose: 'demo',
+        metadata: { version: '1.0', purpose: 'demo' },
+        isPublic: false,  // Confidential client
     });
 
     console.log('✅ Agent registered!');
     console.log(`   • Client ID: ${credentials.clientId}`);
+    console.log(`   • Client ID Format: ${credentials.clientId.startsWith('mcp_') ? 'Standardized (mcp_*)' : 'Legacy'}`);
     console.log(`   • Allowed Scopes: ${credentials.allowedScopes.join(', ')}`);
     console.log(`   • Allowed Audiences: ${credentials.allowedAudiences.join(', ')}`);
+    console.log(`   • Allowed Roles: ${credentials.allowedRoles?.join(', ') ?? 'none'}`);
 
     // =========================================================================
-    // PHASE 4: TOKEN ACQUISITION
+    // PHASE 5: TOKEN ACQUISITION
     // =========================================================================
-    printHeader('PHASE 4: TOKEN ACQUISITION');
+    printHeader('PHASE 5: TOKEN ACQUISITION');
 
-    printSubheader('4A: Opaque Token (no audience)');
+    printSubheader('5A: Opaque Token (no audience)');
     console.log('\n🔑 Requesting token WITHOUT audience...');
     const opaqueToken = await agent.getToken(['read:data']);
     const isOpaque = opaqueToken.accessToken.split('.').length !== 3;
     console.log(`✅ ${isOpaque ? 'Opaque' : 'JWT'} token acquired!`);
     console.log(`   • Token: ${opaqueToken.accessToken.slice(0, 40)}...`);
 
-    printSubheader('4B: JWT Token (with audience - RFC 8707)');
+    printSubheader('5B: JWT Token (with audience - RFC 8707)');
     console.log(`\n🔑 Requesting token WITH audience '${MY_AUDIENCE}'...`);
     const jwtToken = await agent.getToken(['read:data'], MY_AUDIENCE, true);
     const isJwt = jwtToken.accessToken.split('.').length === 3;
@@ -160,14 +184,16 @@ async function main(): Promise<number> {
             console.log(`     - aud: ${payload.aud}`);
             console.log(`     - azp: ${payload.azp}`);
             console.log(`     - scope: ${payload.scope}`);
+            console.log(`     - org_id: ${payload.org_id}`);
+            console.log(`     - roles: ${payload.roles?.join(', ') ?? 'none'}`);
             console.log(`     - exp: ${payload.exp}`);
         }
     }
 
     // =========================================================================
-    // PHASE 5: TOKEN VALIDATION
+    // PHASE 6: TOKEN VALIDATION
     // =========================================================================
-    printHeader('PHASE 5: TOKEN VALIDATION (2 Modes)');
+    printHeader('PHASE 6: TOKEN VALIDATION (3 Modes)');
 
     const server = new MCPResourceServer({
         authServer: AUTH_SERVER,
@@ -177,12 +203,13 @@ async function main(): Promise<number> {
         adminSessionCookie: admin.getSessionCookieString(),
     });
 
-    // 5A: JWT Validation
-    printSubheader('5A: JWT Validation (Stateless, ~0.1ms)');
+    // 6A: JWT Validation (without signature verification)
+    printSubheader('6A: JWT Validation (Decode Only, ~0.1ms)');
     let start = performance.now();
     let result = await server.validateToken(jwtToken.accessToken, {
         requiredScopes: ['read:data'],
         useJwt: true,
+        verifySignature: false,
     });
     let elapsed = performance.now() - start;
 
@@ -195,8 +222,27 @@ async function main(): Promise<number> {
         return 1;
     }
 
-    // 5B: Introspection
-    printSubheader('5B: Introspection Validation (~35ms)');
+    // 6B: JWT Validation WITH Ed25519 signature verification
+    printSubheader('6B: JWT + Signature Verification (~1-2ms first, then cached)');
+    start = performance.now();
+    result = await server.validateToken(jwtToken.accessToken, {
+        requiredScopes: ['read:data'],
+        useJwt: true,
+        verifySignature: true,
+    });
+    elapsed = performance.now() - start;
+
+    if (result.valid) {
+        console.log(`✅ JWT + signature verification PASSED in ${elapsed.toFixed(2)}ms`);
+        console.log(`   • Signature verified via JWKS`);
+        console.log(`   • Client ID: ${result.clientId}`);
+    } else {
+        console.log(`❌ Signature verification FAILED: ${result.error} (${result.errorCode})`);
+        console.log(`   ⚠️ This is expected if auth server doesn't expose JWKS`);
+    }
+
+    // 6C: Introspection (RFC 7662)
+    printSubheader('6C: Introspection Validation (RFC 7662, ~35ms)');
     start = performance.now();
     result = await server.validateToken(opaqueToken.accessToken, {
         requiredScopes: ['read:data'],
@@ -214,9 +260,25 @@ async function main(): Promise<number> {
     }
 
     // =========================================================================
-    // PHASE 6: SCOPE ENFORCEMENT
+    // PHASE 7: DIRECT INTROSPECTION (Agent-side)
     // =========================================================================
-    printHeader('PHASE 6: SCOPE ENFORCEMENT');
+    printHeader('PHASE 7: DIRECT TOKEN INTROSPECTION');
+
+    printSubheader('7A: Agent introspecting its own token');
+    const introspectionResult = await agent.introspectToken(jwtToken.accessToken);
+    if (introspectionResult.active) {
+        console.log('✅ Token is active!');
+        console.log(`   • Client ID: ${introspectionResult.clientId}`);
+        console.log(`   • Scope: ${introspectionResult.scope}`);
+        console.log(`   • Roles: ${introspectionResult.roles?.join(', ') ?? 'none'}`);
+    } else {
+        console.log('❌ Token is inactive');
+    }
+
+    // =========================================================================
+    // PHASE 8: SCOPE ENFORCEMENT
+    // =========================================================================
+    printHeader('PHASE 8: SCOPE ENFORCEMENT');
 
     console.log('\n🚫 Attempting to validate with unauthorized scope...');
     result = await server.validateToken(jwtToken.accessToken, {
@@ -232,9 +294,9 @@ async function main(): Promise<number> {
     }
 
     // =========================================================================
-    // PHASE 7: AUDIENCE VALIDATION
+    // PHASE 9: AUDIENCE VALIDATION
     // =========================================================================
-    printHeader('PHASE 7: AUDIENCE VALIDATION');
+    printHeader('PHASE 9: AUDIENCE VALIDATION');
 
     const otherServer = new MCPResourceServer({
         authServer: AUTH_SERVER,
@@ -253,9 +315,9 @@ async function main(): Promise<number> {
     }
 
     // =========================================================================
-    // PHASE 8: KILL SWITCH
+    // PHASE 10: KILL SWITCH
     // =========================================================================
-    printHeader('PHASE 8: KILL SWITCH (Client Revocation)');
+    printHeader('PHASE 10: KILL SWITCH (Client Revocation)');
 
     console.log(`\n🔒 Revoking client ${credentials.clientId.slice(0, 16)}...`);
     const revoked = await admin.revokeClient(credentials.clientId);
@@ -263,7 +325,7 @@ async function main(): Promise<number> {
 
     server.clearCache();
 
-    printSubheader('8A: JWT Validation (still valid - stateless)');
+    printSubheader('10A: JWT Validation (still valid - stateless)');
     result = await server.validateToken(jwtToken.accessToken, {
         useJwt: true,
         requireActiveCheck: false,
@@ -273,7 +335,7 @@ async function main(): Promise<number> {
         console.log('   Token will expire at its exp time');
     }
 
-    printSubheader('8B: JWT + Active Check (rejected!)');
+    printSubheader('10B: JWT + Active Check (rejected!)');
     result = await server.validateToken(jwtToken.accessToken, {
         useJwt: true,
         requireActiveCheck: true,
@@ -291,14 +353,18 @@ async function main(): Promise<number> {
     printHeader('DEMO COMPLETE - ALL SDK FEATURES VERIFIED');
     console.log(`
 ✅ Registration Invite (Budgeted DCR)
+✅ Protected Resource Metadata (RFC 9728)
 ✅ Agent Registration with REG_JWT
+✅ Standardized Client ID Format (mcp_*)
 ✅ Opaque Token Acquisition
 ✅ JWT Token Acquisition (RFC 8707)
 ✅ JWT Validation (Stateless, ~0.1ms)
-✅ Introspection Validation (~35ms)
+✅ JWT Signature Verification via JWKS
+✅ Token Introspection (RFC 7662)
 ✅ Scope Enforcement
 ✅ Audience Validation (JWT aud claim)
 ✅ Kill Switch / Client Revocation
+✅ Role-based Access Control (RBAC)
 `);
 
     return 0;

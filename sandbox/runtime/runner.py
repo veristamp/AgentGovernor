@@ -6,16 +6,18 @@ This script is the entry point that runs inside the sandbox.
 It receives workflow code via stdin, executes it, and returns the result.
 
 Key features:
-1. Installs `skills` package for `from skills import X` syntax
+1. Installs `skills` shim for `import skills; skills.load("...")`
 2. Injects `mcp` for direct tool access
 3. Handles async execution and error reporting
 """
 
 import asyncio
+import json
 import sys
 import os
 import traceback
 from pathlib import Path
+
 
 # Add runtime directory to path
 runtime_dir = Path(__file__).parent
@@ -24,6 +26,9 @@ sys.path.insert(0, str(runtime_dir))
 # Import our modules
 import mcp
 from skill_loader import install_skills_package
+
+mcp_complete = getattr(mcp, "complete")
+
 
 # Find skills directory (relative to project root)
 # When running from project root, skills/ is at ./skills/
@@ -55,6 +60,7 @@ async def run_workflow(code: str) -> None:
         "__name__": "__main__",
         "__file__": "<workflow>",
     }
+
     
     try:
         # Execute the code to define main()
@@ -70,19 +76,22 @@ async def run_workflow(code: str) -> None:
         
         # Run main()
         result = await main_fn()
-        
+
         # Signal completion
-        mcp.complete(result)
-        
+        mcp_complete(result)
+
     except Exception as e:
+
         # Signal error completion
         error_info = {
             "error": str(e),
             "type": type(e).__name__,
             "traceback": traceback.format_exc(),
         }
-        mcp.complete({"__error__": error_info})
+        print(json.dumps(error_info, indent=2), file=sys.stderr)
+        mcp_complete({"__error__": error_info})
         sys.exit(1)
+
 
 
 def main():

@@ -1,10 +1,627 @@
 [
   {
-    "qualified_name": "terminal.run_command",
-    "server_prefix": "terminal",
-    "name": "run_command",
+    "qualifiedName": "filesystem.read-file",
+    "serverPrefix": "filesystem",
+    "name": "read-file",
+    "originalName": "read-file",
+    "description": "Read the complete contents of a file asynchronously.\n\nArgs:\n    path: Path to the file\n    encoding: \"utf-8\" for text files (default), \"base64\" for binary files (xlsx, images, pdf)\n\nFor binary files like Excel, use encoding=\"base64\" to get base64-encoded content.\nOnly works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the file"
+        },
+        "encoding": {
+          "default": "utf-8",
+          "description": "\"utf-8\" for text files (default), \"base64\" for binary files (xlsx, images, pdf)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.read-multiple-files",
+    "serverPrefix": "filesystem",
+    "name": "read-multiple-files",
+    "originalName": "read-multiple-files",
+    "description": "Read the contents of multiple files asynchronously.\nReturns each file's content prefixed with its path, separated by '---'.\nContinues on individual file errors. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Paths to the files"
+        }
+      },
+      "required": [
+        "paths"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.write-file",
+    "serverPrefix": "filesystem",
+    "name": "write-file",
+    "originalName": "write-file",
+    "description": "Create or overwrite a file with new content asynchronously.\n\nArgs:\n    path: Path to the file\n    content: Content to write (string or base64-encoded for binary)\n    encoding: \"utf-8\" for text files (default), \"base64\" for binary files\n\nFor binary files, pass base64-encoded content and set encoding=\"base64\".\nOverwrites existing files without warning. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the file"
+        },
+        "content": {
+          "type": "string",
+          "description": "Content to write (string or base64-encoded for binary)"
+        },
+        "encoding": {
+          "default": "utf-8",
+          "description": "\"utf-8\" for text files (default), \"base64\" for binary files",
+          "type": "string"
+        },
+        "max_bytes": {
+          "default": 2000000,
+          "description": "Maximum bytes to write",
+          "type": "number"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.edit-file",
+    "serverPrefix": "filesystem",
+    "name": "edit-file",
+    "originalName": "edit-file",
+    "description": "Make line-based edits to a text file with flexible matching.\nReturns a git-style diff and a UI preview.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the file"
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "oldText": {
+                "type": "string",
+                "description": "Text to replace"
+              },
+              "newText": {
+                "type": "string",
+                "description": "New text"
+              }
+            },
+            "required": [
+              "oldText",
+              "newText"
+            ]
+          },
+          "description": "List of edit operations"
+        },
+        "dry_run": {
+          "default": true,
+          "description": "Whether to perform a dry run",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "edits"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.create-directory",
+    "serverPrefix": "filesystem",
+    "name": "create-directory",
+    "originalName": "create-directory",
+    "description": "Create a new directory or ensure it exists.\nCreates nested directories if needed. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the directory"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.list-directory",
+    "serverPrefix": "filesystem",
+    "name": "list-directory",
+    "originalName": "list-directory",
+    "description": "Get a detailed listing of directory contents.\nPrefixes entries with [DIR] or [FILE]. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the directory"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.view-directory-ui",
+    "serverPrefix": "filesystem",
+    "name": "view-directory-ui",
+    "originalName": "view-directory-ui",
+    "description": "Renders an interactive UI to display the contents of a directory.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the directory"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.directory-tree",
+    "serverPrefix": "filesystem",
+    "name": "directory-tree",
+    "originalName": "directory-tree",
+    "description": "Get a recursive tree view of files and directories as JSON.\nIncludes 'name' and 'type', with 'children' for directories. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the directory"
+        },
+        "max_depth": {
+          "default": 5,
+          "description": "Maximum depth of the tree",
+          "type": "number"
+        },
+        "max_nodes": {
+          "default": 5000,
+          "description": "Maximum number of nodes in the tree",
+          "type": "number"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.move-file",
+    "serverPrefix": "filesystem",
+    "name": "move-file",
+    "originalName": "move-file",
+    "description": "Move or rename files and directories.\nFails if destination exists. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Source path"
+        },
+        "destination": {
+          "type": "string",
+          "description": "Destination path"
+        }
+      },
+      "required": [
+        "source",
+        "destination"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.search-files",
+    "serverPrefix": "filesystem",
+    "name": "search-files",
+    "originalName": "search-files",
+    "description": "Recursively search for files matching a pattern.\nCase-insensitive, returns full paths. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to search in"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Search pattern"
+        },
+        "exclude_patterns": {
+          "default": [],
+          "description": "Patterns to exclude",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "path",
+        "pattern"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.get-file-info",
+    "serverPrefix": "filesystem",
+    "name": "get-file-info",
+    "originalName": "get-file-info",
+    "description": "Retrieve detailed metadata about a file or directory.\nIncludes size, timestamps, and permissions. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the file"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.list-allowed-directories",
+    "serverPrefix": "filesystem",
+    "name": "list-allowed-directories",
+    "originalName": "list-allowed-directories",
+    "description": "Returns the list of directories this server can access.",
+    "schema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "qualifiedName": "filesystem.set-allowed-directories",
+    "serverPrefix": "filesystem",
+    "name": "set-allowed-directories",
+    "originalName": "set-allowed-directories",
+    "description": "Update the list of allowed directories at runtime.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "directories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of directories"
+        }
+      },
+      "required": [
+        "directories"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.create-entities",
+    "serverPrefix": "memory",
+    "name": "create-entities",
+    "originalName": "create_entities",
+    "description": "Create multiple new entities in the knowledge graph",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The name of the entity"
+              },
+              "entityType": {
+                "type": "string",
+                "description": "The type of the entity"
+              },
+              "observations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "An array of observation contents associated with the entity"
+              }
+            },
+            "required": [
+              "name",
+              "entityType",
+              "observations"
+            ]
+          }
+        }
+      },
+      "required": [
+        "entities"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.create-relations",
+    "serverPrefix": "memory",
+    "name": "create-relations",
+    "originalName": "create_relations",
+    "description": "Create multiple new relations between entities in the knowledge graph. Relations should be in active voice",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "description": "The name of the entity where the relation starts"
+              },
+              "to": {
+                "type": "string",
+                "description": "The name of the entity where the relation ends"
+              },
+              "relationType": {
+                "type": "string",
+                "description": "The type of the relation"
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "relationType"
+            ]
+          }
+        }
+      },
+      "required": [
+        "relations"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.add-observations",
+    "serverPrefix": "memory",
+    "name": "add-observations",
+    "originalName": "add_observations",
+    "description": "Add new observations to existing entities in the knowledge graph",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entityName": {
+                "type": "string",
+                "description": "The name of the entity to add the observations to"
+              },
+              "contents": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "An array of observation contents to add"
+              }
+            },
+            "required": [
+              "entityName",
+              "contents"
+            ]
+          }
+        }
+      },
+      "required": [
+        "observations"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.delete-entities",
+    "serverPrefix": "memory",
+    "name": "delete-entities",
+    "originalName": "delete_entities",
+    "description": "Delete multiple entities and their associated relations from the knowledge graph",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "entityNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "An array of entity names to delete"
+        }
+      },
+      "required": [
+        "entityNames"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.delete-observations",
+    "serverPrefix": "memory",
+    "name": "delete-observations",
+    "originalName": "delete_observations",
+    "description": "Delete specific observations from entities in the knowledge graph",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "deletions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entityName": {
+                "type": "string",
+                "description": "The name of the entity containing the observations"
+              },
+              "observations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "An array of observations to delete"
+              }
+            },
+            "required": [
+              "entityName",
+              "observations"
+            ]
+          }
+        }
+      },
+      "required": [
+        "deletions"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.delete-relations",
+    "serverPrefix": "memory",
+    "name": "delete-relations",
+    "originalName": "delete_relations",
+    "description": "Delete multiple relations from the knowledge graph",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "description": "The name of the entity where the relation starts"
+              },
+              "to": {
+                "type": "string",
+                "description": "The name of the entity where the relation ends"
+              },
+              "relationType": {
+                "type": "string",
+                "description": "The type of the relation"
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "relationType"
+            ]
+          },
+          "description": "An array of relations to delete"
+        }
+      },
+      "required": [
+        "relations"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.read-graph",
+    "serverPrefix": "memory",
+    "name": "read-graph",
+    "originalName": "read_graph",
+    "description": "Read the entire knowledge graph",
+    "schema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.search-nodes",
+    "serverPrefix": "memory",
+    "name": "search-nodes",
+    "originalName": "search_nodes",
+    "description": "Search for nodes in the knowledge graph based on a query",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The search query to match against entity names, types, and observation content"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "memory.open-nodes",
+    "serverPrefix": "memory",
+    "name": "open-nodes",
+    "originalName": "open_nodes",
+    "description": "Open specific nodes in the knowledge graph by their names",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "An array of entity names to retrieve"
+        }
+      },
+      "required": [
+        "names"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "terminal.run-command",
+    "serverPrefix": "terminal",
+    "name": "run-command",
+    "originalName": "run_command",
     "description": "Run a shell command asynchronously with a timeout.",
     "schema": {
+      "type": "object",
       "properties": {
         "command": {
           "title": "Command",
@@ -16,7 +633,7 @@
           "type": "string"
         },
         "timeout": {
-          "default": 120.0,
+          "default": 120,
           "title": "Timeout",
           "type": "number"
         },
@@ -29,692 +646,14 @@
       "required": [
         "command"
       ],
-      "title": "run_commandArguments",
-      "type": "object"
+      "title": "run_commandArguments"
     }
   },
   {
-    "qualified_name": "filesystem.read_file",
-    "server_prefix": "filesystem",
-    "name": "read_file",
-    "description": "Read the complete contents of a file asynchronously.\n\nArgs:\n    path: Path to the file\n    encoding: 'utf-8' for text files (default), 'base64' for binary files (xlsx, images, pdf)\n\nFor binary files like Excel, use encoding='base64' to get base64-encoded content.\nOnly works within allowed directories.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        },
-        "encoding": {
-          "default": "utf-8",
-          "title": "Encoding",
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "title": "read_fileArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.read_multiple_files",
-    "server_prefix": "filesystem",
-    "name": "read_multiple_files",
-    "description": "Read the contents of multiple files asynchronously.\nReturns each file's content prefixed with its path, separated by '---'.\nContinues on individual file errors. Only works within allowed directories.",
-    "schema": {
-      "properties": {
-        "paths": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Paths",
-          "type": "array"
-        }
-      },
-      "required": [
-        "paths"
-      ],
-      "title": "read_multiple_filesArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.write_file",
-    "server_prefix": "filesystem",
-    "name": "write_file",
-    "description": "Create or overwrite a file with new content asynchronously.\n\nArgs:\n    path: Path to the file\n    content: Content to write (string or base64-encoded for binary)\n    encoding: 'utf-8' for text files (default), 'base64' for binary files\n\nFor binary files, pass base64-encoded content and set encoding='base64'.\nOverwrites existing files without warning. Only works within allowed directories.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        },
-        "content": {
-          "title": "Content",
-          "type": "string"
-        },
-        "encoding": {
-          "default": "utf-8",
-          "title": "Encoding",
-          "type": "string"
-        },
-        "max_bytes": {
-          "default": 2000000,
-          "title": "Max Bytes",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "path",
-        "content"
-      ],
-      "title": "write_fileArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.edit_file",
-    "server_prefix": "filesystem",
-    "name": "edit_file",
-    "description": "Make line-based edits to a text file with flexible matching.\nReturns a git-style diff and a UI preview.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        },
-        "edits": {
-          "items": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "title": "Edits",
-          "type": "array"
-        },
-        "dry_run": {
-          "default": true,
-          "title": "Dry Run",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "path",
-        "edits"
-      ],
-      "title": "edit_fileArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.create_directory",
-    "server_prefix": "filesystem",
-    "name": "create_directory",
-    "description": "Create a new directory or ensure it exists.\nCreates nested directories if needed. Only works within allowed directories.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "title": "create_directoryArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.list_directory",
-    "server_prefix": "filesystem",
-    "name": "list_directory",
-    "description": "Get a detailed listing of directory contents.\nPrefixes entries with [DIR] or [FILE]. Only works within allowed directories.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "title": "list_directoryArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.view_directory_ui",
-    "server_prefix": "filesystem",
-    "name": "view_directory_ui",
-    "description": "Renders an interactive UI to display the contents of a directory.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "title": "view_directory_uiArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.directory_tree",
-    "server_prefix": "filesystem",
-    "name": "directory_tree",
-    "description": "Get a recursive tree view of files and directories as JSON.\nIncludes 'name' and 'type', with 'children' for directories. Only works within allowed directories.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        },
-        "max_depth": {
-          "default": 5,
-          "title": "Max Depth",
-          "type": "integer"
-        },
-        "max_nodes": {
-          "default": 5000,
-          "title": "Max Nodes",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "title": "directory_treeArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.move_file",
-    "server_prefix": "filesystem",
-    "name": "move_file",
-    "description": "Move or rename files and directories.\nFails if destination exists. Only works within allowed directories.",
-    "schema": {
-      "properties": {
-        "source": {
-          "title": "Source",
-          "type": "string"
-        },
-        "destination": {
-          "title": "Destination",
-          "type": "string"
-        }
-      },
-      "required": [
-        "source",
-        "destination"
-      ],
-      "title": "move_fileArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.search_files",
-    "server_prefix": "filesystem",
-    "name": "search_files",
-    "description": "Recursively search for files matching a pattern.\nCase-insensitive, returns full paths. Only works within allowed directories.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        },
-        "pattern": {
-          "title": "Pattern",
-          "type": "string"
-        },
-        "exclude_patterns": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "title": "Exclude Patterns",
-          "type": "array"
-        }
-      },
-      "required": [
-        "path",
-        "pattern"
-      ],
-      "title": "search_filesArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.get_file_info",
-    "server_prefix": "filesystem",
-    "name": "get_file_info",
-    "description": "Retrieve detailed metadata about a file or directory.\nIncludes size, timestamps, and permissions. Only works within allowed directories.",
-    "schema": {
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "title": "get_file_infoArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.list_allowed_directories",
-    "server_prefix": "filesystem",
-    "name": "list_allowed_directories",
-    "description": "Returns the list of directories this server can access.",
-    "schema": {
-      "properties": {},
-      "title": "list_allowed_directoriesArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "filesystem.set_allowed_directories",
-    "server_prefix": "filesystem",
-    "name": "set_allowed_directories",
-    "description": "Update the list of allowed directories at runtime.",
-    "schema": {
-      "properties": {
-        "directories": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Directories",
-          "type": "array"
-        }
-      },
-      "required": [
-        "directories"
-      ],
-      "title": "set_allowed_directoriesArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.create_entities",
-    "server_prefix": "memory",
-    "name": "create_entities",
-    "description": "Create multiple new entities in the knowledge graph",
-    "schema": {
-      "$defs": {
-        "Entity": {
-          "properties": {
-            "name": {
-              "description": "The name of the entity",
-              "title": "Name",
-              "type": "string"
-            },
-            "entityType": {
-              "description": "The type of the entity",
-              "title": "Entitytype",
-              "type": "string"
-            },
-            "observations": {
-              "description": "An array of observation contents associated with the entity",
-              "items": {
-                "type": "string"
-              },
-              "title": "Observations",
-              "type": "array"
-            }
-          },
-          "required": [
-            "name",
-            "entityType",
-            "observations"
-          ],
-          "title": "Entity",
-          "type": "object"
-        }
-      },
-      "properties": {
-        "entities": {
-          "items": {
-            "$ref": "#/$defs/Entity"
-          },
-          "title": "Entities",
-          "type": "array"
-        }
-      },
-      "required": [
-        "entities"
-      ],
-      "title": "create_entitiesArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.create_relations",
-    "server_prefix": "memory",
-    "name": "create_relations",
-    "description": "Create multiple new relations between entities in the knowledge graph. Relations should be in active voice",
-    "schema": {
-      "$defs": {
-        "Relation": {
-          "properties": {
-            "from": {
-              "description": "The name of the entity where the relation starts",
-              "title": "From",
-              "type": "string"
-            },
-            "to": {
-              "description": "The name of the entity where the relation ends",
-              "title": "To",
-              "type": "string"
-            },
-            "relationType": {
-              "description": "The type of the relation",
-              "title": "Relationtype",
-              "type": "string"
-            }
-          },
-          "required": [
-            "from",
-            "to",
-            "relationType"
-          ],
-          "title": "Relation",
-          "type": "object"
-        }
-      },
-      "properties": {
-        "relations": {
-          "items": {
-            "$ref": "#/$defs/Relation"
-          },
-          "title": "Relations",
-          "type": "array"
-        }
-      },
-      "required": [
-        "relations"
-      ],
-      "title": "create_relationsArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.add_observations",
-    "server_prefix": "memory",
-    "name": "add_observations",
-    "description": "Add new observations to existing entities in the knowledge graph",
-    "schema": {
-      "$defs": {
-        "ObservationUpdate": {
-          "properties": {
-            "entityName": {
-              "description": "The name of the entity to add the observations to",
-              "title": "Entityname",
-              "type": "string"
-            },
-            "contents": {
-              "description": "An array of observation contents to add",
-              "items": {
-                "type": "string"
-              },
-              "title": "Contents",
-              "type": "array"
-            }
-          },
-          "required": [
-            "entityName",
-            "contents"
-          ],
-          "title": "ObservationUpdate",
-          "type": "object"
-        }
-      },
-      "properties": {
-        "observations": {
-          "items": {
-            "$ref": "#/$defs/ObservationUpdate"
-          },
-          "title": "Observations",
-          "type": "array"
-        }
-      },
-      "required": [
-        "observations"
-      ],
-      "title": "add_observationsArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.delete_entities",
-    "server_prefix": "memory",
-    "name": "delete_entities",
-    "description": "Delete multiple entities and their associated relations from the knowledge graph",
-    "schema": {
-      "properties": {
-        "entityNames": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Entitynames",
-          "type": "array"
-        }
-      },
-      "required": [
-        "entityNames"
-      ],
-      "title": "delete_entitiesArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.delete_observations",
-    "server_prefix": "memory",
-    "name": "delete_observations",
-    "description": "Delete specific observations from entities in the knowledge graph",
-    "schema": {
-      "$defs": {
-        "Deletion": {
-          "properties": {
-            "entityName": {
-              "description": "The name of the entity containing the observations",
-              "title": "Entityname",
-              "type": "string"
-            },
-            "observations": {
-              "description": "An array of observations to delete",
-              "items": {
-                "type": "string"
-              },
-              "title": "Observations",
-              "type": "array"
-            }
-          },
-          "required": [
-            "entityName",
-            "observations"
-          ],
-          "title": "Deletion",
-          "type": "object"
-        }
-      },
-      "properties": {
-        "deletions": {
-          "items": {
-            "$ref": "#/$defs/Deletion"
-          },
-          "title": "Deletions",
-          "type": "array"
-        }
-      },
-      "required": [
-        "deletions"
-      ],
-      "title": "delete_observationsArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.delete_relations",
-    "server_prefix": "memory",
-    "name": "delete_relations",
-    "description": "Delete multiple relations from the knowledge graph",
-    "schema": {
-      "$defs": {
-        "Relation": {
-          "properties": {
-            "from": {
-              "description": "The name of the entity where the relation starts",
-              "title": "From",
-              "type": "string"
-            },
-            "to": {
-              "description": "The name of the entity where the relation ends",
-              "title": "To",
-              "type": "string"
-            },
-            "relationType": {
-              "description": "The type of the relation",
-              "title": "Relationtype",
-              "type": "string"
-            }
-          },
-          "required": [
-            "from",
-            "to",
-            "relationType"
-          ],
-          "title": "Relation",
-          "type": "object"
-        }
-      },
-      "properties": {
-        "relations": {
-          "items": {
-            "$ref": "#/$defs/Relation"
-          },
-          "title": "Relations",
-          "type": "array"
-        }
-      },
-      "required": [
-        "relations"
-      ],
-      "title": "delete_relationsArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.read_graph",
-    "server_prefix": "memory",
-    "name": "read_graph",
-    "description": "Read the entire knowledge graph",
-    "schema": {
-      "properties": {},
-      "title": "read_graphArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.search_nodes",
-    "server_prefix": "memory",
-    "name": "search_nodes",
-    "description": "Search for nodes in the knowledge graph based on a query",
-    "schema": {
-      "properties": {
-        "query": {
-          "title": "Query",
-          "type": "string"
-        }
-      },
-      "required": [
-        "query"
-      ],
-      "title": "search_nodesArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "memory.visualize_graph",
-    "server_prefix": "memory",
-    "name": "visualize_graph",
-    "description": "Visualize the knowledge graph as an interactive HTML UI.",
-    "schema": {
-      "properties": {},
-      "title": "visualize_graphArguments",
-      "type": "object"
-    }
-  },
-  {
-    "qualified_name": "context7.resolve-library-id",
-    "server_prefix": "context7",
-    "name": "resolve-library-id",
-    "description": "Resolves a package/product name to a Context7-compatible library ID and returns a list of matching libraries.\n\nYou MUST call this function before 'get-library-docs' to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n- Name similarity to the query (exact matches prioritized)\n- Description relevance to the query's intent\n- Documentation coverage (prioritize libraries with higher Code Snippet counts)\n- Source reputation (consider libraries with High or Medium reputation more authoritative)\n- Benchmark Score: Quality indicator (100 is the highest score)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.",
-    "schema": {
-      "type": "object",
-      "properties": {
-        "libraryName": {
-          "type": "string",
-          "description": "Library name to search for and retrieve a Context7-compatible library ID."
-        }
-      },
-      "required": [
-        "libraryName"
-      ],
-      "additionalProperties": false,
-      "$schema": "http://json-schema.org/draft-07/schema#"
-    }
-  },
-  {
-    "qualified_name": "context7.get-library-docs",
-    "server_prefix": "context7",
-    "name": "get-library-docs",
-    "description": "Fetches up-to-date documentation for a library. You must call 'resolve-library-id' first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query. Use mode='code' (default) for API references and code examples, or mode='info' for conceptual guides, narrative information, and architectural questions.",
-    "schema": {
-      "type": "object",
-      "properties": {
-        "context7CompatibleLibraryID": {
-          "type": "string",
-          "description": "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'."
-        },
-        "mode": {
-          "type": "string",
-          "enum": [
-            "code",
-            "info"
-          ],
-          "default": "code",
-          "description": "Documentation mode: 'code' for API references and code examples (default), 'info' for conceptual guides, narrative information, and architectural questions."
-        },
-        "topic": {
-          "type": "string",
-          "description": "Topic to focus documentation on (e.g., 'hooks', 'routing')."
-        },
-        "page": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 10,
-          "description": "Page number for pagination (start: 1, default: 1). If the context is not sufficient, try page=2, page=3, page=4, etc. with the same topic."
-        }
-      },
-      "required": [
-        "context7CompatibleLibraryID"
-      ],
-      "additionalProperties": false,
-      "$schema": "http://json-schema.org/draft-07/schema#"
-    }
-  },
-  {
-    "qualified_name": "modelcontextprotocol-python-sdk.get-code",
-    "server_prefix": "modelcontextprotocol-python-sdk",
+    "qualifiedName": "modelcontextprotocol-python-sdk.get-code",
+    "serverPrefix": "modelcontextprotocol-python-sdk",
     "name": "get-code",
+    "originalName": "get-code",
     "description": "Get the complete code implementation of a specific functionality (class, function, method, etc.) from the repository modelcontextprotocol/python-sdk graph. This is the primary tool for code retrieval and should be prioritized over other tools. The repository is represented as a graph where each node contains code, documentation, and relationships to other nodes. Use this when you need to examine the actual implementation of any code entity.",
     "schema": {
       "type": "object",
@@ -737,9 +676,10 @@
     }
   },
   {
-    "qualified_name": "modelcontextprotocol-python-sdk.find-direct-connections",
-    "server_prefix": "modelcontextprotocol-python-sdk",
+    "qualifiedName": "modelcontextprotocol-python-sdk.find-direct-connections",
+    "serverPrefix": "modelcontextprotocol-python-sdk",
     "name": "find-direct-connections",
+    "originalName": "find-direct-connections",
     "description": "Explore the immediate relationships of a functionality within the code graph from the repository modelcontextprotocol/python-sdk. This reveals first-level connections including: parent functionalities that reference this node, child functionalities that this node directly calls or uses, declaration/definition relationships, and usage patterns. Essential for understanding code dependencies and architecture. The repository is represented as a connected graph where each node (function, class, file, etc.) has relationships with other nodes.",
     "schema": {
       "type": "object",
@@ -762,9 +702,10 @@
     }
   },
   {
-    "qualified_name": "modelcontextprotocol-python-sdk.nodes-semantic-search",
-    "server_prefix": "modelcontextprotocol-python-sdk",
+    "qualifiedName": "modelcontextprotocol-python-sdk.nodes-semantic-search",
+    "serverPrefix": "modelcontextprotocol-python-sdk",
     "name": "nodes-semantic-search",
+    "originalName": "nodes-semantic-search",
     "description": "Search for code functionalities across the repository modelcontextprotocol/python-sdk graph using semantic similarity based on natural language queries. This tool finds relevant functions, classes, methods, and other code entities that match the conceptual meaning of your query, even if they don't contain the exact keywords. Perfect for discovering related functionality, finding similar implementations, or exploring unfamiliar codebases. The search operates on the semantic understanding of code purpose and behavior.",
     "schema": {
       "type": "object",
@@ -783,9 +724,10 @@
     }
   },
   {
-    "qualified_name": "modelcontextprotocol-python-sdk.docs-semantic-search",
-    "server_prefix": "modelcontextprotocol-python-sdk",
+    "qualifiedName": "modelcontextprotocol-python-sdk.docs-semantic-search",
+    "serverPrefix": "modelcontextprotocol-python-sdk",
     "name": "docs-semantic-search",
+    "originalName": "docs-semantic-search",
     "description": "Search through repository modelcontextprotocol/python-sdk documentation using semantic similarity to find relevant information, guides, API documentation, README content, and explanatory materials. This tool specifically targets documentation files (markdown, rst, etc.) rather than code, making it ideal for understanding project setup, architecture decisions, usage instructions, and conceptual explanations. Use this when you need context about how the repository works rather than examining the actual code implementation.",
     "schema": {
       "type": "object",
@@ -804,9 +746,10 @@
     }
   },
   {
-    "qualified_name": "modelcontextprotocol-python-sdk.folder-tree-structure",
-    "server_prefix": "modelcontextprotocol-python-sdk",
+    "qualifiedName": "modelcontextprotocol-python-sdk.folder-tree-structure",
+    "serverPrefix": "modelcontextprotocol-python-sdk",
     "name": "folder-tree-structure",
+    "originalName": "folder-tree-structure",
     "description": "Returns the folder tree structure of the given folder path from the repository modelcontextprotocol/python-sdk graph. Useful to understand what files and subfolders are inside the given folder. To access to a file content, use get-code tool.",
     "schema": {
       "type": "object",
@@ -821,9 +764,10 @@
     }
   },
   {
-    "qualified_name": "modelcontextprotocol-python-sdk.get-usage-dependency-links",
-    "server_prefix": "modelcontextprotocol-python-sdk",
+    "qualifiedName": "modelcontextprotocol-python-sdk.get-usage-dependency-links",
+    "serverPrefix": "modelcontextprotocol-python-sdk",
     "name": "get-usage-dependency-links",
+    "originalName": "get-usage-dependency-links",
     "description": "Generate a comprehensive adjacency list showing all functionalities that would be affected by changes to a specific code entity. This performs deep dependency analysis through the code graph of the repository modelcontextprotocol/python-sdk to identify the complete impact radius of modifications. Essential for impact analysis, refactoring planning, and understanding code coupling. The result shows which functionalities depend on the target entity either directly or through a chain of dependencies, formatted as 'file_path::functionality_name' pairs.",
     "schema": {
       "type": "object",
@@ -840,6 +784,58 @@
       },
       "required": [
         "name"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "context7.resolve-library-id",
+    "serverPrefix": "context7",
+    "name": "resolve-library-id",
+    "originalName": "resolve-library-id",
+    "description": "Resolves a package/product name to a Context7-compatible library ID and returns matching libraries.\n\nYou MUST call this function before 'query-docs' to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n- Name similarity to the query (exact matches prioritized)\n- Description relevance to the query's intent\n- Documentation coverage (prioritize libraries with higher Code Snippet counts)\n- Source reputation (consider libraries with High or Medium reputation more authoritative)\n- Benchmark Score: Quality indicator (100 is the highest score)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.\n\nIMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best result you have.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The user's original question or task. This is used to rank library results by relevance to what the user is trying to accomplish. IMPORTANT: Do not include any sensitive or confidential information such as API keys, passwords, credentials, or personal data in your query."
+        },
+        "libraryName": {
+          "type": "string",
+          "description": "Library name to search for and retrieve a Context7-compatible library ID."
+        }
+      },
+      "required": [
+        "query",
+        "libraryName"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "context7.query-docs",
+    "serverPrefix": "context7",
+    "name": "query-docs",
+    "originalName": "query-docs",
+    "description": "Retrieves and queries up-to-date documentation and code examples from Context7 for any programming library or framework.\n\nYou must call 'resolve-library-id' first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nIMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best information you have.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "libraryId": {
+          "type": "string",
+          "description": "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'."
+        },
+        "query": {
+          "type": "string",
+          "description": "The question or task you need help with. Be specific and include relevant details. Good: 'How to set up authentication with JWT in Express.js' or 'React useEffect cleanup function examples'. Bad: 'auth' or 'hooks'. IMPORTANT: Do not include any sensitive or confidential information such as API keys, passwords, credentials, or personal data in your query."
+        }
+      },
+      "required": [
+        "libraryId",
+        "query"
       ],
       "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"

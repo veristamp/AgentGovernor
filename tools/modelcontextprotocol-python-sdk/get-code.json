@@ -1,7 +1,8 @@
 {
-  "qualified_name": "modelcontextprotocol-python-sdk.get-code",
-  "server_prefix": "modelcontextprotocol-python-sdk",
+  "qualifiedName": "modelcontextprotocol-python-sdk.get-code",
+  "serverPrefix": "modelcontextprotocol-python-sdk",
   "name": "get-code",
+  "originalName": "get-code",
   "description": "Get the complete code implementation of a specific functionality (class, function, method, etc.) from the repository modelcontextprotocol/python-sdk graph. This is the primary tool for code retrieval and should be prioritized over other tools. The repository is represented as a graph where each node contains code, documentation, and relationships to other nodes. Use this when you need to examine the actual implementation of any code entity.",
   "schema": {
     "type": "object",

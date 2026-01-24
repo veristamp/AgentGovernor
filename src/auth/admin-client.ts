@@ -35,6 +35,7 @@ export interface CreateInviteParams {
     ttlSeconds?: number;
     allowedScopes?: string[];
     allowedAudiences?: string[];
+    allowedRoles?: string[];
 }
 
 export interface InviteResult {
@@ -192,6 +193,7 @@ export class MCPAdminClient {
                 ttlSeconds: params.ttlSeconds ?? 600,
                 allowedScopes: params.allowedScopes ?? [],
                 allowedAudiences: params.allowedAudiences ?? [],
+                allowedRoles: params.allowedRoles ?? [],
             }
         );
 

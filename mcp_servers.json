@@ -1,10 +1,10 @@
 {
   "FileSystem": {
     "connection_type": "stdio",
-    "command": "uv",
+    "command": "bun",
     "args": [
       "run",
-      "filesystem.py"
+      "filesystem.ts"
     ],
     "cwd": ".",
     "timeout": 5.0,
@@ -23,10 +23,10 @@
   },
   "Memory": {
     "connection_type": "stdio",
-    "command": "uv",
+    "command": "bun",
     "args": [
       "run",
-      "memory.py"
+      "memory.ts"
     ],
     "cwd": ".",
     "timeout": 5.0,

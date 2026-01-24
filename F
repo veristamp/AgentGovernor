@@ -1,0 +1,104 @@
+import { spawn, spawnSync } from 'child_process';
+import { resolve } from 'path';
+import { existsSync } from 'fs';
+
+export interface LaunchOptions {
+    code: string;
+    socketPath: string;
+    timeout?: number;
+    memoryLimit?: number;
+    cpuLimit?: number;
+}
+
+export interface LaunchResult {
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    executionTimeMs: number;
+}
+
+const RUNTIME_SCRIPT = resolve('sandbox/runtime/runner.py');
+const NSJAIL_CONFIG = resolve('sandbox/nsjail.cfg');
+
+function pickPythonCommand(): string {
+    if (process.env.PYTHON) return process.env.PYTHON;
+    return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+export async function isNsJailAvailable(): Promise<boolean> {
+    if (process.platform === 'win32') return false;
+    const result = spawnSync('nsjail', ['--version'], { stdio: 'ignore' });
+    return result.status === 0;
+}
+
+export async function launchUnsafe(options: LaunchOptions): Promise<LaunchResult> {
+    return runWorkflow(options, { useNsJail: false });
+}
+
+export async function launchSandbox(options: LaunchOptions): Promise<LaunchResult> {
+    if (!(await isNsJailAvailable())) {
+        throw new Error('NsJail not available on this system');
+    }
+    if (!existsSync(NSJAIL_CONFIG)) {
+        throw new Error('NsJail config not found');
+    }
+    return runWorkflow(options, { useNsJail: true });
+}
+
+async function runWorkflow(
+    options: LaunchOptions,
+    { useNsJail }: { useNsJail: boolean }
+): Promise<LaunchResult> {
+    const python = pickPythonCommand();
+    const start = Date.now();
+    const env = {
+        ...process.env,
+        MCP_SOCKET_PATH: options.socketPath,
+    };
+
+    const args: string[] = [];
+    let command = python;
+
+    if (useNsJail) {
+        command = 'nsjail';
+        args.push('-C', NSJAIL_CONFIG, '--', python, RUNTIME_SCRIPT);
+    } else {
+        args.push(RUNTIME_SCRIPT);
+    }
+
+    return new Promise<LaunchResult>((resolve) => {
+        const child = spawn(command, args, {
+            env,
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        child.stdout.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+
+        child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+
+        const timeoutMs = (options.timeout ?? 60) * 1000;
+        const timeoutId = setTimeout(() => {
+            child.kill('SIGKILL');
+        }, timeoutMs);
+
+        child.on('close', (code) => {
+            clearTimeout(timeoutId);
+            resolve({
+                stdout,
+                stderr,
+                exitCode: code ?? 1,
+                executionTimeMs: Date.now() - start,
+            });
+        });
+
+        child.stdin.write(options.code);
+        child.stdin.end();
+    });
+}

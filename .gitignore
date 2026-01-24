@@ -25,3 +25,11 @@ tool_schema.json
 uv.lock
 tools_schema.json
 node_modules
+output
+file_patcher
+judgment
+sdk
+legacy
+docs
+workflows_gcm
+memory.jsonl

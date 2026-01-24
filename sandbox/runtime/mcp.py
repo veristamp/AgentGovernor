@@ -55,6 +55,7 @@ class MCPClient:
     def _send_request(self, method: str, params: dict) -> Any:
         """Send JSON-RPC request and wait for response."""
         self._connect()
+        assert self._file is not None
         
         self._request_id += 1
         request = {
@@ -106,9 +107,10 @@ class BindingProxy:
     This is the I/O trap - all external calls go through the Policy Gate.
     """
     
-    def __init__(self, server_prefix: str, client: 'MCPClient'):
+    def __init__(self, server_prefix: str, client: 'MCPClient', skill_context: Optional[Dict[str, str]] = None):
         self._prefix = server_prefix
         self._client = client
+        self._skill_context = skill_context
     
     def __getattr__(self, name: str):
         """
@@ -121,6 +123,8 @@ class BindingProxy:
         
         async def method_proxy(**kwargs) -> Any:
             tool_name = f"{self._prefix}.{name}"
+            if self._skill_context:
+                kwargs = {**kwargs, "__context": self._skill_context}
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
                 None, 
@@ -130,6 +134,7 @@ class BindingProxy:
             )
         
         return method_proxy
+
     
     def __repr__(self):
         return f"<BindingProxy for {self._prefix}>"
@@ -167,24 +172,27 @@ async def use(tool: str, **kwargs) -> Any:
     return await loop.run_in_executor(None, client._send_request, tool, kwargs)
 
 
-def create_binding(server_prefix: str) -> BindingProxy:
+def create_binding(server_prefix: str, skill_context: Optional[str] = None) -> BindingProxy:
     """
     Create a binding proxy for a specific MCP server.
-    
+
     This is used by the skill loader to inject _binding into skill modules.
-    
+
     Args:
         server_prefix: The server name (e.g., "filesystem", "terminal")
-    
+        skill_context: Optional skill reference (e.g., "skills:filesystem@1")
+
     Returns:
         A BindingProxy that routes calls to that server
-    
+
     Example:
-        _binding = mcp.create_binding("filesystem")
+        _binding = mcp.create_binding("filesystem", skill_context="skills:filesystem@1")
         result = await _binding.list_directory(path=".")
         # This calls: filesystem.list_directory
     """
-    return BindingProxy(server_prefix, _get_client())
+    context = {"skill": skill_context} if skill_context else None
+    return BindingProxy(server_prefix, _get_client(), context)
+
 
 
 async def capabilities() -> list:

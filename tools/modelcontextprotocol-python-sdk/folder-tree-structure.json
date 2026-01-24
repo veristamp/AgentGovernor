@@ -1,7 +1,8 @@
 {
-  "qualified_name": "modelcontextprotocol-python-sdk.folder-tree-structure",
-  "server_prefix": "modelcontextprotocol-python-sdk",
+  "qualifiedName": "modelcontextprotocol-python-sdk.folder-tree-structure",
+  "serverPrefix": "modelcontextprotocol-python-sdk",
   "name": "folder-tree-structure",
+  "originalName": "folder-tree-structure",
   "description": "Returns the folder tree structure of the given folder path from the repository modelcontextprotocol/python-sdk graph. Useful to understand what files and subfolders are inside the given folder. To access to a file content, use get-code tool.",
   "schema": {
     "type": "object",

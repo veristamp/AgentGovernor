@@ -1,0 +1,23 @@
+{
+  "qualifiedName": "filesystem.read-multiple-files",
+  "serverPrefix": "filesystem",
+  "name": "read-multiple-files",
+  "originalName": "read-multiple-files",
+  "description": "Read the contents of multiple files asynchronously.\nReturns each file's content prefixed with its path, separated by '---'.\nContinues on individual file errors. Only works within allowed directories.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "paths": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Paths to the files"
+      }
+    },
+    "required": [
+      "paths"
+    ],
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

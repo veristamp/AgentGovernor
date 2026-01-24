@@ -14,7 +14,9 @@ import ast
 import json
 import sys
 from dataclasses import dataclass, field, asdict
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Set
+SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 
 
 @dataclass
@@ -31,6 +33,7 @@ class ToolCall:
 class Manifest:
     """The derived manifest from static analysis."""
     tools: List[str]
+    skills: List[str]
     tool_calls: List[ToolCall]
     has_loops: bool
     has_conditionals: bool
@@ -41,6 +44,7 @@ class Manifest:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "tools": self.tools,
+            "skills": self.skills,
             "tool_calls": [asdict(tc) for tc in self.tool_calls],
             "has_loops": self.has_loops,
             "has_conditionals": self.has_conditionals,
@@ -66,6 +70,22 @@ class MCPCallVisitor(ast.NodeVisitor):
         self._current_depth = 0
         self.errors: List[str] = []
         self.warnings: List[str] = []
+        # Map variable name -> kebab-case skill id from skills.load("...")
+        self._skill_vars: Dict[str, str] = {}
+
+    def visit_Assign(self, node: ast.Assign) -> Any:
+        skill_id = self._extract_loaded_skill_id(node.value)
+        if skill_id:
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self._skill_vars[target.id] = skill_id
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> Any:
+        skill_id = self._extract_loaded_skill_id(node.value)
+        if skill_id and isinstance(node.target, ast.Name):
+            self._skill_vars[node.target.id] = skill_id
+        self.generic_visit(node)
     
     def visit_For(self, node: ast.For) -> Any:
         self.has_loops = True
@@ -108,23 +128,33 @@ class MCPCallVisitor(ast.NodeVisitor):
         if not isinstance(node.func, ast.Attribute):
             return
         
-        # Pattern 1: mcp.use("tool.name", ...)
+        # Pattern 1: mcp.use("tool.name", ...) (blocked in skills-only mode)
         if node.func.attr == 'use' and isinstance(node.func.value, ast.Name) and node.func.value.id == 'mcp':
+            self.errors.append(
+                f"Line {node.lineno}: Direct mcp.use() calls are not allowed in skills-only mode"
+            )
             self._extract_mcp_use(node)
             return
         
-        # Pattern 2: skill.method(...) e.g., filesystem.list_files(...)
-        # This catches calls like: await filesystem.read(path=".")
-        if isinstance(node.func.value, ast.Name):
-            skill_name = node.func.value.id
+        # Pattern 2: skill.method(...) via either:
+        # - await skillVar.method(...) where skillVar was bound from skills.load("...")
+        # - await skills.load("...").method(...)
+        base_expr = node.func.value
+        base_name: Optional[str] = None
+        if isinstance(base_expr, ast.Name):
+            base_name = base_expr.id
+        elif isinstance(base_expr, ast.Call):
+            base_name = self._extract_loaded_skill_id(base_expr)
+        if base_name is not None:
             method_name = node.func.attr
             
             # Skip common non-skill modules
-            if skill_name in ('mcp', 'asyncio', 'json', 'os', 'sys', 'print', 'str', 'int', 'list', 'dict'):
+            if base_name in ('mcp', 'skills', 'asyncio', 'json', 'os', 'sys', 'print', 'str', 'int', 'list', 'dict'):
                 return
             
             # This looks like a skill call
-            tool_name = f"{skill_name}.{method_name}"
+            skill_id = self._skill_vars.get(base_name, base_name)
+            tool_name = f"{skill_id}.{method_name}"
             
             # Extract arguments
             static_args, dynamic_args = self._extract_args(node)
@@ -136,6 +166,26 @@ class MCPCallVisitor(ast.NodeVisitor):
                 static_args=static_args,
                 dynamic_args=dynamic_args,
             ))
+
+    def _extract_loaded_skill_id(self, node: Optional[ast.AST]) -> Optional[str]:
+        """Detect `var = skills.load("repo-insight")` style bindings."""
+        if not isinstance(node, ast.Call):
+            return None
+        if not isinstance(node.func, ast.Attribute):
+            return None
+        if not (isinstance(node.func.value, ast.Name) and node.func.value.id == 'skills'):
+            return None
+        if node.func.attr not in ('load', 'get'):
+            return None
+
+        if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+            return node.args[0].value
+
+        for kw in node.keywords:
+            if kw.arg in ('name', 'skill', 'skill_id', 'skillId') and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                return kw.value.value
+
+        return None
     
     def _extract_mcp_use(self, node: ast.Call) -> None:
         """Extract tool info from mcp.use() call."""
@@ -228,6 +278,7 @@ def analyze_code(code: str) -> Manifest:
     except SyntaxError as e:
         return Manifest(
             tools=[],
+            skills=[],
             tool_calls=[],
             has_loops=False,
             has_conditionals=False,
@@ -249,14 +300,40 @@ def analyze_code(code: str) -> Manifest:
     visitor = MCPCallVisitor()
     visitor.visit(tree)
     
+    # Extract unique tool names
+    tools = list(set(tc.tool for tc in visitor.tool_calls if tc.tool != "__dynamic__"))
+
+    skill_refs = []
+    for tool in tools:
+        if tool.count('.') == 1:
+            skill_id = tool.split('.', 1)[0]
+            manifest_path = SKILLS_DIR / skill_id / "manifest.json"
+            if not manifest_path.exists():
+                errors.append(f"Skill manifest not found for '{skill_id}'")
+                continue
+            try:
+                manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                errors.append(f"Invalid manifest.json for skill '{skill_id}': {exc}")
+                continue
+            if not isinstance(manifest_data, dict):
+                errors.append(f"Manifest for skill '{skill_id}' must be a JSON object")
+                continue
+            manifest_skill_id = str(manifest_data.get("skillId", skill_id))
+            manifest_version = str(manifest_data.get("version", 1))
+            skill_refs.append(f"skills:{manifest_skill_id}@{manifest_version}")
+
+    if not visitor.tool_calls:
+        errors.append("No skills invoked. Workflows must call skills (not raw tools).")
+
+
     # Combine errors
     all_errors = errors + visitor.errors
     
-    # Extract unique tool names
-    tools = list(set(tc.tool for tc in visitor.tool_calls if tc.tool != "__dynamic__"))
-    
     return Manifest(
         tools=sorted(tools),
+        skills=sorted(set(skill_refs)),
+
         tool_calls=visitor.tool_calls,
         has_loops=visitor.has_loops,
         has_conditionals=visitor.has_conditionals,
@@ -265,49 +342,47 @@ def analyze_code(code: str) -> Manifest:
         warnings=visitor.warnings,
     )
 
-
 def check_manifest_policy(
     manifest: Manifest,
-    allowed_tools: Set[str],
+    allowed_skills: Set[str],
     max_loop_depth: int = 5,
 ) -> List[str]:
     """
     Check if a manifest violates policy.
-    
+
     Args:
         manifest: The extracted manifest
-        allowed_tools: Set of tool names this identity can use
+        allowed_skills: Set of skill names this identity can use
         max_loop_depth: Maximum allowed loop nesting
-    
+
     Returns:
         List of policy violations (empty if OK)
     """
     violations: List[str] = []
-    
+
     # Check for syntax/parse errors
     if manifest.errors:
         violations.extend(manifest.errors)
-    
-    # Check each tool against allowed list
-    for tool in manifest.tools:
-        if tool not in allowed_tools:
-            violations.append(f"Tool '{tool}' is not allowed for this identity")
-    
+
+    # Check each skill against allowed list
+    for skill in manifest.skills:
+        if skill not in allowed_skills:
+            violations.append(f"Skill '{skill}' is not allowed for this identity")
+
     # Check loop depth
     if manifest.max_depth > max_loop_depth:
         violations.append(
             f"Loop nesting depth ({manifest.max_depth}) exceeds maximum ({max_loop_depth})"
         )
-    
+
     # Check for dynamic tool names (security risk)
     for tc in manifest.tool_calls:
         if tc.tool == "__dynamic__":
             violations.append(
                 f"Line {tc.line}: Dynamic tool names are not allowed"
             )
-    
-    return violations
 
+    return violations
 
 # ==================== CLI ====================
 
@@ -317,7 +392,8 @@ def main():
     
     parser = argparse.ArgumentParser(description="Static Auditor for Governed Code Mode")
     parser.add_argument("file", nargs="?", help="Python file to analyze (or stdin if omitted)")
-    parser.add_argument("--allowed", "-a", nargs="*", default=[], help="Allowed tool names")
+    parser.add_argument("--allowed", "-a", nargs="*", default=[], help="Allowed skill names")
+
     parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
     args = parser.parse_args()
     
@@ -331,7 +407,7 @@ def main():
     # Analyze
     manifest = analyze_code(code)
     
-    # Check policy if allowed tools specified
+    # Check policy if allowed skills specified
     violations = []
     if args.allowed:
         violations = check_manifest_policy(manifest, set(args.allowed))
@@ -346,7 +422,7 @@ def main():
         print(json.dumps(output, indent=2))
     else:
         print("=== MANIFEST ===")
-        print(f"Tools: {manifest.tools}")
+        print(f"Skills: {manifest.skills}")
         print(f"Tool calls: {len(manifest.tool_calls)}")
         print(f"Has loops: {manifest.has_loops}")
         print(f"Has conditionals: {manifest.has_conditionals}")

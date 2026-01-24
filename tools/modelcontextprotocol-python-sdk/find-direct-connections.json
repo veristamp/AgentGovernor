@@ -1,7 +1,8 @@
 {
-  "qualified_name": "modelcontextprotocol-python-sdk.find-direct-connections",
-  "server_prefix": "modelcontextprotocol-python-sdk",
+  "qualifiedName": "modelcontextprotocol-python-sdk.find-direct-connections",
+  "serverPrefix": "modelcontextprotocol-python-sdk",
   "name": "find-direct-connections",
+  "originalName": "find-direct-connections",
   "description": "Explore the immediate relationships of a functionality within the code graph from the repository modelcontextprotocol/python-sdk. This reveals first-level connections including: parent functionalities that reference this node, child functionalities that this node directly calls or uses, declaration/definition relationships, and usage patterns. Essential for understanding code dependencies and architecture. The repository is represented as a connected graph where each node (function, class, file, etc.) has relationships with other nodes.",
   "schema": {
     "type": "object",

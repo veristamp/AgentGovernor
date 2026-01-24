@@ -2,6 +2,17 @@
 
 TypeScript SDK for MCP agents and resource servers to interact with the Mono Authz identity fabric.
 
+> **Note**: This is a TypeScript port of the Python SDK (`sdk/mcp_identity.py`). We created this for native integration with the TypeScript MCPClientManager in Governed Code Mode.
+
+## Why TypeScript SDK?
+
+| Aspect | Python SDK | TypeScript SDK |
+|--------|-----------|----------------|
+| **MCPClientManager** | Requires bridge/spawn | ✅ Native integration |
+| **Ed25519 Verification** | Not implemented | ✅ Web Crypto API |
+| **Type Safety** | Type hints | ✅ Full static typing |
+| **Runtime** | httpx async | Bun native fetch |
+
 ## Features
 
 | SDK | Use Case | Grant Type |
@@ -9,6 +20,19 @@ TypeScript SDK for MCP agents and resource servers to interact with the Mono Aut
 | **MCPAgentClient** | AI agents, backend services | `client_credentials` |
 | **MCPResourceServer** | Token validation | JWT or introspection |
 | **MCPAdminClient** | Admin operations | Session-based |
+
+### RBAC Roles Support
+
+Roles can be assigned to agents during invite creation and are embedded in access tokens:
+
+```typescript
+const invite = await admin.createInvite({
+  orgId: 'org_123',
+  budget: 5,
+  allowedScopes: ['read:data', 'write:data'],
+  allowedRoles: ['mcp:rag-agent', 'mcp:executor'],  // RBAC roles
+});
+```
 
 ## Quick Start
 
@@ -46,10 +70,11 @@ const server = new MCPResourceServer({
   myAudience: 'mcp://rag-service',
 });
 
-// Fast path: JWT validation (stateless, ~0.1ms)
+// Fast path: JWT validation with signature verification
 const result = await server.validateToken(token, {
   requiredScopes: ['read:data'],
-  useJwt: true, // Default
+  useJwt: true,
+  verifySignature: true,  // ✅ Ed25519 JWKS verification
 });
 
 // With kill switch check (adds ~35ms for active check)
@@ -77,8 +102,32 @@ if (result.valid) {
 | Mode | Use Case | Performance |
 |------|----------|-------------|
 | `useJwt: true` | Normal requests | ~0.1ms, stateless |
+| `useJwt: true, verifySignature: true` | **Production** | ~1ms first, ~0.1ms cached |
 | `useJwt: false` | Opaque tokens | ~35ms, calls auth server |
 | `requireActiveCheck: true` | Kill switch enforcement | Adds client status check |
+
+## Ed25519 Signature Verification
+
+The SDK uses Web Crypto API for Ed25519 JWT signature verification:
+
+```typescript
+// Production: Always verify signatures
+const result = await server.validateToken(token, {
+  verifySignature: true, // Fetches JWKS, verifies Ed25519
+});
+
+// If signature invalid:
+if (result.errorCode === 'invalid_signature') {
+  console.log('Token was tampered with!');
+}
+```
+
+**How it works:**
+1. Fetch `/.well-known/jwks.json` from auth server
+2. Find key by `kid` from JWT header
+3. Import Ed25519 public key via `crypto.subtle.importKey()`
+4. Verify signature via `crypto.subtle.verify()`
+5. Cache JWKS for 1 hour
 
 ## API Reference
 
@@ -88,24 +137,43 @@ if (result.valid) {
 |--------|-------------|
 | `register(clientName, metadata?)` | Register a new machine client |
 | `getToken(scopes?, audience?, forceRefresh?)` | Get access token (JWT if audience specified) |
+| `getCredentials()` | Get saved credentials |
 
 ### MCPResourceServer
 
 | Method | Description |
 |--------|-------------|
 | `validateToken(token, options?)` | Validate token |
-| `clearCache()` | Clear client status cache |
+| `clearCache()` | Clear client status and JWKS cache |
+
+**ValidateTokenOptions:**
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `requiredScopes` | `string[]` | `[]` | Scopes that must be present |
+| `useJwt` | `boolean` | `true` | Use JWT validation (vs introspection) |
+| `verifySignature` | `boolean` | `false` | Verify Ed25519 signature via JWKS |
+| `requireActiveCheck` | `boolean` | `false` | Check kill switch status |
 
 ### MCPAdminClient
 
 | Method | Description |
 |--------|-------------|
 | `login(email, password)` | Authenticate as admin |
-| `createInvite(params)` | Create registration invite |
+| `createInvite(params)` | Create registration invite (with roles) |
 | `getClient(clientId)` | Get client details |
 | `disableClient(clientId)` | Temporarily suspend client |
 | `enableClient(clientId)` | Re-enable client |
 | `revokeClient(clientId)` | Permanently revoke client |
+
+**CreateInviteParams:**
+| Option | Type | Description |
+|--------|------|-------------|
+| `orgId` | `string` | Organization ID |
+| `budget` | `number` | Max registrations allowed |
+| `ttlMinutes` | `number` | Time to live in minutes |
+| `allowedScopes` | `string[]` | Scopes agents can request |
+| `allowedAudiences` | `string[]` | Valid audience values |
+| `allowedRoles` | `string[]` | RBAC roles to assign |
 
 ### ValidationResult
 
@@ -115,6 +183,7 @@ if (result.valid) {
 | `clientId` | `string` | Client identifier (from `azp` claim) |
 | `orgId` | `string` | Organization ID |
 | `scopes` | `string[]` | Granted scopes |
+| `roles` | `string[]` | RBAC roles (from `roles` claim) |
 | `error` | `string` | Error message (if invalid) |
 | `errorCode` | `string` | Error code (if invalid) |
 
@@ -122,12 +191,31 @@ if (result.valid) {
 
 | Code | Description |
 |------|-------------|
+| `invalid_signature` | Ed25519 signature verification failed |
 | `token_expired` | JWT has expired |
 | `audience_mismatch` | Token's `aud` doesn't match `my_audience` |
 | `insufficient_scope` | Missing required scopes |
 | `client_revoked` | Client has been permanently revoked |
 | `client_disabled` | Client is temporarily disabled |
 | `token_inactive` | Opaque token is inactive |
+
+## Integration with MCPClientManager
+
+The TypeScript SDK is used natively by MCPClientManager:
+
+```typescript
+const manager = new MCPClientManager({
+  enableAuth: true,
+  authServer: 'https://auth.example.com',
+  myAudience: 'mcp://gcm',
+});
+
+// Validates JWT at GATE 2 before executing any tool
+await manager.executeAction(
+  { actionType: 'tool', actionName: 'filesystem.read_file', arguments: { path: '.' } },
+  { jwt: 'eyJ...' }  // Token validated here
+);
+```
 
 ## Environment Variables
 
@@ -151,12 +239,14 @@ src/auth/
 ├── index.ts           # Barrel export
 ├── types.ts           # Type definitions
 ├── errors.ts          # Error classes
-├── jwt.ts             # JWT utilities
+├── jwt.ts             # JWT decode utilities
+├── jwks.ts            # JWKS fetching and Ed25519 verification
 ├── agent-client.ts    # MCPAgentClient
 ├── resource-server.ts # MCPResourceServer
 ├── admin-client.ts    # MCPAdminClient
 ├── helpers.ts         # Convenience functions
-└── demo.ts            # Demo script
+├── demo.ts            # Full demo script
+└── README.md          # This file
 ```
 
 ## Run Demo
@@ -170,3 +260,29 @@ export MCP_AUTH_SERVER=http://localhost:8787
 # Run demo
 bun run src/auth/demo.ts
 ```
+
+## Comparison with Python SDK
+
+Both SDKs have feature parity:
+
+| Feature | Python (`sdk/mcp_identity.py`) | TypeScript (`src/auth/`) |
+|---------|-------------------------------|--------------------------|
+| Agent Registration | ✅ | ✅ |
+| Token Acquisition | ✅ Opaque + JWT | ✅ Opaque + JWT |
+| JWT Validation | ✅ Decode only | ✅ Decode + Ed25519 verify |
+| Introspection | ✅ | ✅ |
+| Kill Switch | ✅ | ✅ |
+| RBAC Roles | ✅ | ✅ |
+| Admin Client | ✅ | ✅ |
+| FastAPI Integration | ✅ `create_mcp_dependency()` | N/A |
+| MCPClientManager | Requires bridge | ✅ Native |
+
+**Use Python SDK** for:
+- FastAPI backends
+- Python MCP servers
+- Data pipelines
+
+**Use TypeScript SDK** for:
+- Governed Code Mode executor
+- Bun/Node.js services
+- Native MCPClientManager integration

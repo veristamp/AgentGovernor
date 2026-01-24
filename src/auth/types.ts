@@ -2,6 +2,12 @@
  * MCP Identity SDK - Types
  *
  * TypeScript type definitions for the MCP Machine Identity fabric.
+ * 
+ * Updated to include:
+ * - Token introspection response types (RFC 7662)
+ * - Protected Resource Metadata types (RFC 9728)
+ * - Rate limit error handling
+ * - Allowed roles support
  */
 
 // =============================================================================
@@ -24,7 +30,9 @@ export interface MCPCredentials {
     clientSecret: string;
     allowedScopes: string[];
     allowedAudiences: string[];
+    allowedRoles?: string[];
     orgId?: string;
+    isPublic?: boolean;
 }
 
 /**
@@ -58,6 +66,9 @@ export interface ValidationResult {
     orgId?: string;
     scopes: string[];
     allowedAudiences?: string[];
+    roles?: string[];
+    clientType?: string;
+    riskLevel?: string;
     error?: string;
     errorCode?: string;
 }
@@ -77,7 +88,8 @@ export type ValidationErrorCode =
     | 'client_not_found'
     | 'no_client_id'
     | 'jwt_validation_error'
-    | 'validation_error';
+    | 'validation_error'
+    | 'rate_limit_exceeded';
 
 /**
  * Cached client status for kill switch enforcement.
@@ -87,7 +99,10 @@ export interface ClientStatus {
     status: 'active' | 'disabled' | 'revoked';
     allowedScopes: string[];
     allowedAudiences: string[];
+    allowedRoles?: string[];
     orgId?: string;
+    clientType?: string;
+    riskLevel?: string;
     fetchedAt: number;
 }
 
@@ -111,10 +126,15 @@ export interface JWTClaims {
     aud?: string | string[]; // Audience
     exp?: number; // Expiration
     iat?: number; // Issued at
+    jti?: string; // JWT ID
     azp?: string; // Authorized party (client_id)
     client_id?: string; // Alternative client_id
     scope?: string; // Space-separated scopes
+    scp?: string[]; // Array of scopes (alternative format)
     org_id?: string; // Organization ID
+    client_type?: string; // Client type (machine, user, etc.)
+    risk_level?: string; // Risk level (normal, elevated, high_risk)
+    roles?: string[]; // Assigned roles
     [key: string]: unknown;
 }
 
@@ -174,19 +194,39 @@ export interface TokenResponse {
  */
 export interface RegistrationResponse {
     client_id: string;
-    client_secret: string;
+    client_secret: string | null;
+    client_name?: string;
+    redirect_uris?: string[];
+    grant_types?: string[];
+    token_endpoint_auth_method?: string;
     allowed_scopes?: string[];
     allowed_audiences?: string[];
+    allowed_roles?: string[];
+    organization_id?: string;
     org_id?: string;
+    is_public?: boolean;
+    require_pkce?: boolean;
 }
 
 /**
- * Introspection endpoint response.
+ * Introspection endpoint response (RFC 7662).
  */
 export interface IntrospectionResponse {
     active: boolean;
+    sub?: string;
     client_id?: string;
     scope?: string;
+    aud?: string;
+    iss?: string;
+    exp?: number;
+    iat?: number;
+    jti?: string;
+    token_type?: string;
+    // MCP custom claims
+    org_id?: string;
+    client_type?: string;
+    risk_level?: string;
+    roles?: string[];
     [key: string]: unknown;
 }
 
@@ -197,5 +237,34 @@ export interface ClientStatusResponse {
     status: string;
     allowedScopes?: string[];
     allowedAudiences?: string[];
+    allowedRoles?: string[];
     orgId?: string;
+    clientType?: string;
+    riskLevel?: string;
+}
+
+/**
+ * Protected Resource Metadata (RFC 9728).
+ */
+export interface ProtectedResourceMetadata {
+    resource: string;
+    authorization_servers: string[];
+    jwks_uri?: string;
+    scopes_supported?: string[];
+    bearer_methods_supported?: string[];
+    introspection_endpoint?: string;
+    introspection_endpoint_auth_methods_supported?: string[];
+    resource_documentation?: string;
+    resource_name?: string;
+    resource_signing_alg_values_supported?: string[];
+}
+
+/**
+ * Rate limit error details.
+ */
+export interface RateLimitInfo {
+    retryAfter: number;
+    remaining?: number;
+    limit?: number;
+    type?: 'ip' | 'org' | 'token_mint';
 }

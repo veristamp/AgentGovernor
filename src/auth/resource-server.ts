@@ -41,11 +41,27 @@ import {
     extractClientId,
     extractScopes,
 } from './jwt';
+import { JWKSManager, verifyJWT } from './jwks';
 
 export interface ValidateTokenOptions {
     requiredScopes?: string[];
     useJwt?: boolean;
     requireActiveCheck?: boolean;
+    /** If true, verify JWT signature using JWKS (adds ~1-2ms first call, then cached) */
+    verifySignature?: boolean;
+}
+
+function normalizeRoles(roles?: string[] | string | null): string[] {
+    if (!roles) {
+        return [];
+    }
+    if (Array.isArray(roles)) {
+        return roles.filter(Boolean);
+    }
+    if (typeof roles === 'string') {
+        return roles.split(' ').filter(Boolean);
+    }
+    return [];
 }
 
 export class MCPResourceServer {
@@ -57,6 +73,7 @@ export class MCPResourceServer {
     private adminSessionCookie?: string;
     private cacheTtl: number;
     private clientCache: Map<string, ClientStatus> = new Map();
+    private jwksManager: JWKSManager;
 
     constructor(config: MCPResourceServerConfig) {
         this.authServer = config.authServer.replace(/\/$/, '');
@@ -66,6 +83,7 @@ export class MCPResourceServer {
         this.adminApiKey = config.adminApiKey;
         this.adminSessionCookie = config.adminSessionCookie;
         this.cacheTtl = config.cacheTtl ?? CLIENT_CACHE_TTL;
+        this.jwksManager = new JWKSManager(this.authServer);
     }
 
     /**
@@ -79,7 +97,7 @@ export class MCPResourceServer {
         token: string,
         options: ValidateTokenOptions = {}
     ): Promise<ValidationResult> {
-        const { requiredScopes, useJwt = true, requireActiveCheck = false } = options;
+        const { requiredScopes, useJwt = true, requireActiveCheck = false, verifySignature = false } = options;
 
         if (!token) {
             return {
@@ -95,7 +113,7 @@ export class MCPResourceServer {
 
             if (useJwt && isJwtToken) {
                 // Fast path: JWT validation locally
-                return await this.validateJwtToken(token, requiredScopes, requireActiveCheck);
+                return await this.validateJwtToken(token, requiredScopes, requireActiveCheck, verifySignature);
             } else {
                 // Slow path: Introspection
                 return await this.validateViaIntrospect(token, requiredScopes);
@@ -117,17 +135,34 @@ export class MCPResourceServer {
     private async validateJwtToken(
         token: string,
         requiredScopes?: string[],
-        requireActiveCheck: boolean = false
+        requireActiveCheck: boolean = false,
+        verifySignature: boolean = false
     ): Promise<ValidationResult> {
-        const claims = decodeJWT(token);
+        let claims;
 
-        if (!claims) {
-            return {
-                valid: false,
-                scopes: [],
-                error: 'Invalid JWT format',
-                errorCode: 'invalid_token',
-            };
+        // Optionally verify signature using JWKS
+        if (verifySignature) {
+            const verifyResult = await verifyJWT(token, this.jwksManager);
+            if (!verifyResult.verified) {
+                return {
+                    valid: false,
+                    scopes: [],
+                    error: verifyResult.error,
+                    errorCode: 'invalid_signature',
+                };
+            }
+            claims = verifyResult.claims;
+        } else {
+            // Just decode without verification (for trusted internal use)
+            claims = decodeJWT(token);
+            if (!claims) {
+                return {
+                    valid: false,
+                    scopes: [],
+                    error: 'Invalid JWT format',
+                    errorCode: 'invalid_token',
+                };
+            }
         }
 
         // Check expiration
@@ -152,6 +187,9 @@ export class MCPResourceServer {
 
         const clientId = extractClientId(claims);
         const tokenScopes = extractScopes(claims);
+        const roles = normalizeRoles(claims.roles as string[] | string | null | undefined);
+        const clientType = typeof claims.client_type === 'string' ? claims.client_type : undefined;
+        const riskLevel = typeof claims.risk_level === 'string' ? claims.risk_level : undefined;
 
         // Check required scopes
         if (requiredScopes && requiredScopes.length > 0) {
@@ -187,6 +225,9 @@ export class MCPResourceServer {
             clientId,
             orgId: claims.org_id as string | undefined,
             scopes: tokenScopes,
+            roles,
+            clientType,
+            riskLevel,
         };
     }
 
@@ -257,6 +298,9 @@ export class MCPResourceServer {
 
         // Step 5: Validate scopes
         const tokenScopes = (introspectResult.scope ?? '').split(' ').filter(Boolean);
+        const roles = normalizeRoles(introspectResult.roles ?? clientStatus.allowedRoles ?? []);
+        const clientType = introspectResult.client_type ?? clientStatus.clientType;
+        const riskLevel = introspectResult.risk_level ?? clientStatus.riskLevel;
         if (requiredScopes && requiredScopes.length > 0) {
             const missing = requiredScopes.filter((s) => !tokenScopes.includes(s));
             if (missing.length > 0) {
@@ -277,6 +321,9 @@ export class MCPResourceServer {
             orgId: clientStatus.orgId,
             scopes: tokenScopes,
             allowedAudiences: clientStatus.allowedAudiences,
+            roles,
+            clientType,
+            riskLevel,
         };
     }
 
@@ -344,7 +391,10 @@ export class MCPResourceServer {
                     status: data.status as 'active' | 'disabled' | 'revoked',
                     allowedScopes: data.allowedScopes ?? [],
                     allowedAudiences: data.allowedAudiences ?? [],
+                    allowedRoles: data.allowedRoles ?? [],
                     orgId: data.orgId,
+                    clientType: data.clientType,
+                    riskLevel: data.riskLevel,
                     fetchedAt: Date.now() / 1000,
                 };
 
@@ -363,5 +413,6 @@ export class MCPResourceServer {
      */
     clearCache(): void {
         this.clientCache.clear();
+        this.jwksManager.clearCache();
     }
 }

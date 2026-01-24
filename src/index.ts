@@ -16,6 +16,11 @@ import { createSocketServer, SocketServer } from './socket-server';
 import { launchSandbox, launchUnsafe, isNsJailAvailable } from '../sandbox/launcher';
 import { readFileSync, existsSync } from 'fs';
 import { platform } from 'os';
+import { SkillCreatorAgent } from './skill_creator';
+import { LlmClient } from './agent';
+import { PolicyEngine } from './policy';
+import { createInterface } from 'readline/promises';
+
 
 // Windows uses named pipes, Unix uses file sockets
 const getDefaultSocketPath = () => {
@@ -106,10 +111,11 @@ Usage:
   bun run src/index.ts [options]
 
 Options:
-  --config <path>    Path to MCP servers config (default: mcp_servers.json)
-  --execute <file>   Execute a workflow file and exit
-  --socket <path>    Unix socket path (default: /tmp/mcp-workflow.sock)
-  --help, -h         Show this help
+  --config <path>      Path to MCP servers config (default: mcp_servers.json)
+  --execute <file>     Execute a workflow file and exit
+  --socket <path>      Unix socket path (default: /tmp/mcp-workflow.sock)
+  --skill-create       Run admin skill creator agent
+  --help, -h           Show this help
 
 Server Mode:
   bun run src/index.ts
@@ -120,13 +126,22 @@ Execute Mode:
   bun run src/index.ts --execute workflow.py
   
   Executes a workflow file and exits.
+
+Skill Creation Mode:
+  bun run src/index.ts --skill-create "Your goal" --role mcp:team-role --org org_123
 `);
         process.exit(0);
     }
 
+
     // Parse arguments
     let configPath = 'mcp_servers.json';
     let executeFile: string | null = null;
+    let skillGoal: string | null = null;
+    const skillRoles: string[] = [];
+    let skillOrg: string | undefined;
+    let skillTeam: string | undefined;
+
 
     for (let i = 0; i < args.length; i++) {
         if (args[i] === '--config' && args[i + 1]) {
@@ -135,11 +150,67 @@ Execute Mode:
             executeFile = args[++i] as string;
         } else if (args[i] === '--socket' && args[i + 1]) {
             process.env.MCP_SOCKET_PATH = args[++i] as string;
+        } else if (args[i] === '--skill-create' && args[i + 1]) {
+            skillGoal = args[++i] as string;
+        } else if (args[i] === '--role' && args[i + 1]) {
+            skillRoles.push(args[++i] as string);
+        } else if (args[i] === '--org' && args[i + 1]) {
+            skillOrg = args[++i] as string;
+        } else if (args[i] === '--team' && args[i + 1]) {
+            skillTeam = args[++i] as string;
         }
+    }
+
+
+    if (skillGoal) {
+        const llmBase = process.env.LLM_API_BASE || 'http://localhost:1234/v1';
+        const llmModel = process.env.LLM_MODEL_NAME || 'granite-4.0-micro';
+        const policy = new PolicyEngine();
+        policy.loadRulesFromFile('policy/policy_rules.json');
+        const agent = new SkillCreatorAgent(
+            { llm: new LlmClient(llmBase, ''), policy },
+            {
+                model: llmModel,
+                toolsPath: 'tools_schema.json',
+                skillsDir: 'skills',
+                policyFilePath: 'policy/policy_rules.json',
+                rolePermissionsPath: 'policy/role_permissions.json',
+                maxRepairAttempts: 3,
+            }
+        );
+        const result = await agent.run({
+            goal: skillGoal,
+            constraints: [],
+            requester: {
+                id: 'admin',
+                roles: ['mcp:admin', ...skillRoles],
+                orgId: skillOrg,
+                teamId: skillTeam,
+            },
+        });
+        console.log('[SkillCreator] Created', result.skillRef, 'in', result.skillDir);
+
+        if (result.abacProposal) {
+            console.log('\n[SkillCreator] ABAC proposal (requires human approval):');
+            console.log(JSON.stringify(result.abacProposal, null, 2));
+
+            const rl = createInterface({ input: process.stdin, output: process.stdout });
+            const answer = await rl.question('Approve ABAC proposal? [y/N]: ');
+            rl.close();
+
+            if (answer.trim().toLowerCase() === 'y') {
+                console.log('[SkillCreator] ABAC proposal approved. Apply manually to policy/policy_rules.json.');
+            } else {
+                console.log('[SkillCreator] ABAC proposal not applied.');
+            }
+        }
+
+        process.exit(0);
     }
 
     // Initialize
     const gcm = await initialize(configPath);
+
 
     // Handle signals
     process.on('SIGINT', async () => {

@@ -1,7 +1,8 @@
 {
-  "qualified_name": "modelcontextprotocol-python-sdk.nodes-semantic-search",
-  "server_prefix": "modelcontextprotocol-python-sdk",
+  "qualifiedName": "modelcontextprotocol-python-sdk.nodes-semantic-search",
+  "serverPrefix": "modelcontextprotocol-python-sdk",
   "name": "nodes-semantic-search",
+  "originalName": "nodes-semantic-search",
   "description": "Search for code functionalities across the repository modelcontextprotocol/python-sdk graph using semantic similarity based on natural language queries. This tool finds relevant functions, classes, methods, and other code entities that match the conceptual meaning of your query, even if they don't contain the exact keywords. Perfect for discovering related functionality, finding similar implementations, or exploring unfamiliar codebases. The search operates on the semantic understanding of code purpose and behavior.",
   "schema": {
     "type": "object",
