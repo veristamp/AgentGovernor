@@ -1,20 +1,18 @@
 {
-  "qualifiedName": "filesystem.list-directory",
-  "serverPrefix": "filesystem",
-  "name": "list-directory",
-  "originalName": "list-directory",
-  "description": "Get a detailed listing of directory contents.\nPrefixes entries with [DIR] or [FILE]. Only works within allowed directories.",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string",
-        "description": "Path to the directory"
-      }
-    },
-    "required": [
-      "path"
-    ],
-    "$schema": "http://json-schema.org/draft-07/schema#"
-  }
+	"qualifiedName": "filesystem.list-directory",
+	"serverPrefix": "filesystem",
+	"name": "list-directory",
+	"originalName": "list-directory",
+	"description": "Get a detailed listing of directory contents.\nPrefixes entries with [DIR] or [FILE]. Only works within allowed directories.",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"path": {
+				"type": "string",
+				"description": "Path to the directory"
+			}
+		},
+		"required": ["path"],
+		"$schema": "http://json-schema.org/draft-07/schema#"
+	}
 }

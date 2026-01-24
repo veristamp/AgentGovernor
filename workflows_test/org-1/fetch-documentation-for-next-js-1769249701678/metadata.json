@@ -1,10 +1,8 @@
 {
-  "id": "fetch-documentation-for-next-js-1769249701678",
-  "goal": "Fetch documentation for Next.js",
-  "createdAt": "2026-01-24T10:15:01.679Z",
-  "createdBy": "mcp:docs-curator",
-  "orgId": "org-1",
-  "skills": [
-    "skills:docs-to-files@1"
-  ]
+	"id": "fetch-documentation-for-next-js-1769249701678",
+	"goal": "Fetch documentation for Next.js",
+	"createdAt": "2026-01-24T10:15:01.679Z",
+	"createdBy": "mcp:docs-curator",
+	"orgId": "org-1",
+	"skills": ["skills:docs-to-files@1"]
 }

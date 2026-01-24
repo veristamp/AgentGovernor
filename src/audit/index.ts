@@ -2,5 +2,5 @@
  * Audit Module - Barrel Export
  */
 
-export { analyzeCode, validateSyntax } from './bridge';
-export { AuditLogger, getAuditLogger, type AuditLoggerOptions } from './logger';
+export { analyzeCode, analyzeSkillCode, validateSyntax } from "./bridge";
+export { AuditLogger, type AuditLoggerOptions, getAuditLogger } from "./logger";

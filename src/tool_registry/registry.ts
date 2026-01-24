@@ -1,109 +1,127 @@
-import { readdirSync, readFileSync, statSync } from 'fs';
-import { join, resolve } from 'path';
-import { db, toTsVector } from '../registry/db';
-import { tools } from '../registry/schema';
-import { sql, eq } from 'drizzle-orm';
-import type { ToolDescriptor, ToolRegistryOptions } from './types';
+import { eq, sql } from "drizzle-orm";
+import { readdirSync, readFileSync, statSync } from "fs";
+import { join, resolve } from "path";
+import { db, toTsVector } from "../registry/db";
+import { tools } from "../registry/schema";
+import type { ToolDescriptor, ToolRegistryOptions } from "./types";
 
 export class ToolRegistry {
-    private toolsDir: string;
+	private toolsDir: string;
 
-    constructor(options: ToolRegistryOptions = {}) {
-        this.toolsDir = resolve(options.toolsDir || 'tools');
-    }
+	constructor(options: ToolRegistryOptions = {}) {
+		this.toolsDir = resolve(options.toolsDir || "tools");
+	}
 
-    public async ingest() {
-        // console.log(`[ToolRegistry] Ingesting tools from: ${this.toolsDir}`);
-        const walk = async (dir: string) => {
-            if (!require('fs').existsSync(dir)) return;
-            
-            const files = readdirSync(dir);
-            for (const file of files) {
-                const path = join(dir, file);
-                const stat = statSync(path);
-                if (stat.isDirectory()) {
-                    await walk(path);
-                } else if (file.endsWith('.json')) {
-                    try {
-                        const content = readFileSync(path, 'utf-8');
-                        const data = JSON.parse(content);
-                        if (data.qualifiedName && data.description) {
-                            await this.upsert(data);
-                        }
-                    } catch (e) {
-                        console.error(`Failed to ingest ${path}:`, e);
-                    }
-                }
-            }
-        };
+	public async ingest() {
+		// console.log(`[ToolRegistry] Ingesting tools from: ${this.toolsDir}`);
+		const walk = async (dir: string) => {
+			if (!require("fs").existsSync(dir)) return;
 
-        // Check if empty, then ingest
-        const result = await db.select({ count: sql<number>`count(*)` }).from(tools);
-        const count = Number(result[0]?.count || 0);
-        
-        if (count === 0) {
-             await walk(this.toolsDir);
-             const final = await db.select({ count: sql<number>`count(*)` }).from(tools);
-             console.log(`[ToolRegistry] Ingested ${final[0]?.count} tools.`);
-        }
-    }
+			const files = readdirSync(dir);
+			for (const file of files) {
+				const path = join(dir, file);
+				const stat = statSync(path);
+				if (stat.isDirectory()) {
+					await walk(path);
+				} else if (file.endsWith(".json")) {
+					try {
+						const content = readFileSync(path, "utf-8");
+						const data = JSON.parse(content);
+						if (data.qualifiedName && data.description) {
+							await this.upsert(data);
+						}
+					} catch (e) {
+						console.error(`Failed to ingest ${path}:`, e);
+					}
+				}
+			}
+		};
 
-    private async upsert(tool: any) {
-        await db.insert(tools).values({
-            qualifiedName: tool.qualifiedName,
-            serverPrefix: tool.serverPrefix,
-            name: tool.name,
-            description: tool.description,
-            schema: tool.schema || {},
-            searchVector: toTsVector(tool.qualifiedName + ' ' + tool.name + ' ' + tool.description)
-        }).onConflictDoUpdate({
-            target: tools.qualifiedName,
-            set: {
-                serverPrefix: tool.serverPrefix,
-                name: tool.name,
-                description: tool.description,
-                schema: tool.schema || {},
-                searchVector: toTsVector(tool.qualifiedName + ' ' + tool.name + ' ' + tool.description)
-            }
-        });
-    }
+		// Check if empty, then ingest
+		const result = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(tools);
+		const count = Number(result[0]?.count || 0);
 
-    public async search(query: string, limit: number = 10): Promise<ToolDescriptor[]> {
-        const sanitized = query.replace(/[^\w\s]/g, ' ').trim();
-        if (!sanitized) return [];
+		if (count === 0) {
+			await walk(this.toolsDir);
+			const final = await db
+				.select({ count: sql<number>`count(*)` })
+				.from(tools);
+			console.log(`[ToolRegistry] Ingested ${final[0]?.count} tools.`);
+		}
+	}
 
-        const tokens = sanitized.split(/\s+/).filter(t => t.length > 2);
-        if (tokens.length === 0) return [];
-        
-        // Use plainto_tsquery or simple string matching for 'OR' logic
-        const searchQuery = tokens.join(' | ');
-        
-        const results = await db.select()
-            .from(tools)
-            .where(sql`search_vector @@ to_tsquery('english', ${searchQuery})`)
-            .limit(limit);
+	private async upsert(tool: any) {
+		await db
+			.insert(tools)
+			.values({
+				qualifiedName: tool.qualifiedName,
+				serverPrefix: tool.serverPrefix,
+				name: tool.name,
+				description: tool.description,
+				schema: tool.schema || {},
+				searchVector: toTsVector(
+					tool.qualifiedName + " " + tool.name + " " + tool.description,
+				),
+			})
+			.onConflictDoUpdate({
+				target: tools.qualifiedName,
+				set: {
+					serverPrefix: tool.serverPrefix,
+					name: tool.name,
+					description: tool.description,
+					schema: tool.schema || {},
+					searchVector: toTsVector(
+						tool.qualifiedName + " " + tool.name + " " + tool.description,
+					),
+				},
+			});
+	}
 
-        return results.map(this.mapRow);
-    }
+	public async search(
+		query: string,
+		limit: number = 10,
+	): Promise<ToolDescriptor[]> {
+		const sanitized = query.replace(/[^\w\s]/g, " ").trim();
+		if (!sanitized) return [];
 
-    public async getAll(): Promise<ToolDescriptor[]> {
-        const results = await db.select().from(tools);
-        return results.map(this.mapRow);
-    }
-    
-    public async get(qualifiedName: string): Promise<ToolDescriptor | null> {
-        const results = await db.select().from(tools).where(eq(tools.qualifiedName, qualifiedName));
-        if (results.length === 0 || !results[0]) return null;
-        return this.mapRow(results[0]);
-    }
+		const tokens = sanitized.split(/\s+/).filter((t) => t.length > 2);
+		if (tokens.length === 0) return [];
 
-    private mapRow(row: typeof tools.$inferSelect): ToolDescriptor {
-        return {
-            qualifiedName: row.qualifiedName,
-            serverPrefix: row.serverPrefix,
-            name: row.name,
-            description: row.description,
-            schema: row.schema as unknown
-        };
-    }
+		// Use plainto_tsquery or simple string matching for 'OR' logic
+		const searchQuery = tokens.join(" | ");
+
+		const results = await db
+			.select()
+			.from(tools)
+			.where(sql`search_vector @@ to_tsquery('english', ${searchQuery})`)
+			.limit(limit);
+
+		return results.map(this.mapRow);
+	}
+
+	public async getAll(): Promise<ToolDescriptor[]> {
+		const results = await db.select().from(tools);
+		return results.map(this.mapRow);
+	}
+
+	public async get(qualifiedName: string): Promise<ToolDescriptor | null> {
+		const results = await db
+			.select()
+			.from(tools)
+			.where(eq(tools.qualifiedName, qualifiedName));
+		if (results.length === 0 || !results[0]) return null;
+		return this.mapRow(results[0]);
+	}
+
+	private mapRow(row: typeof tools.$inferSelect): ToolDescriptor {
+		return {
+			qualifiedName: row.qualifiedName,
+			serverPrefix: row.serverPrefix,
+			name: row.name,
+			description: row.description,
+			schema: row.schema as unknown,
+		};
+	}
 }

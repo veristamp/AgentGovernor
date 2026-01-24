@@ -1,14 +1,14 @@
 {
-  "skillId": "docs-to-files",
-  "version": 1,
-  "bindings": {
-    "ctx": "context7",
-    "fs": "filesystem"
-  },
-  "fanoutTools": [
-    "context7.resolve-library-id",
-    "context7.query-docs",
-    "filesystem.create-directory",
-    "filesystem.write-file"
-  ]
+	"skillId": "docs-to-files",
+	"version": 1,
+	"bindings": {
+		"ctx": "context7",
+		"fs": "filesystem"
+	},
+	"fanoutTools": [
+		"context7.resolve-library-id",
+		"context7.query-docs",
+		"filesystem.create-directory",
+		"filesystem.write-file"
+	]
 }

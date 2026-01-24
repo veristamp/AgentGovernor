@@ -13,3 +13,18 @@ Provide a repo insight report by combining semantic doc search, semantic code se
 - memory.create-entities
 - filesystem.create-directory
 - filesystem.write-file
+
+## Examples
+
+```python
+import skills
+
+async def main():
+    result = await skills.load("repo-insight").analyze_repo(
+        query="Next.js routing docs summary",
+        output_dir="output/reports",
+        note_key="routing_docs_summary",
+        write_report=True,
+    )
+    return result
+```

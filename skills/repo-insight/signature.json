@@ -1,0 +1,49 @@
+{
+	"skillRef": "skills:repo-insight@1",
+	"skillId": "repo-insight",
+	"version": "1",
+	"description": "Generate a repo insight report by combining doc/code search and usage links.",
+	"keywords": ["repo", "insight"],
+	"functions": [
+		{
+			"name": "analyze_repo",
+			"summary": "Search docs and code graph for insights, then store a summary.",
+			"params": [
+				{
+					"name": "query",
+					"type": "string",
+					"required": true,
+					"description": "What to learn about the repository."
+				},
+				{
+					"name": "output_dir",
+					"type": "string",
+					"required": true,
+					"description": "Directory to write the report."
+				},
+				{
+					"name": "note_key",
+					"type": "string",
+					"required": true,
+					"description": "Memory key to store the summary."
+				},
+				{
+					"name": "write_report",
+					"type": "boolean",
+					"required": false,
+					"description": "Whether to write the report to disk."
+				}
+			],
+			"returns": {
+				"type": "object",
+				"description": "Summary, memory key, and optional report path."
+			}
+		}
+	],
+	"examples": [
+		{
+			"title": "Summarize routing docs",
+			"code": "import skills\n\nasync def main():\n    result = await skills.load(\"repo-insight\").analyze_repo(\n        query=\"Next.js routing docs summary\",\n        output_dir=\"output/reports\",\n        note_key=\"routing_docs_summary\",\n        write_report=True,\n    )\n    return result\n"
+		}
+	]
+}

@@ -1,0 +1,37 @@
+{
+	"skillRef": "skills:fetch_and_store_documentation@1",
+	"skillId": "fetch_and_store_documentation",
+	"version": "1",
+	"description": "Fetch documentation from a URL and store it in a file.",
+	"keywords": ["fetch", "and", "store", "documentation"],
+	"functions": [
+		{
+			"name": "fetch_and_store",
+			"summary": "Download a URL and write its contents to a file.",
+			"params": [
+				{
+					"name": "url",
+					"type": "string",
+					"required": true,
+					"description": "Documentation URL to fetch."
+				},
+				{
+					"name": "file_path",
+					"type": "string",
+					"required": true,
+					"description": "Path to write the downloaded content."
+				}
+			],
+			"returns": {
+				"type": "object",
+				"description": "URL, file path, and status metadata."
+			}
+		}
+	],
+	"examples": [
+		{
+			"title": "Fetch documentation to disk",
+			"code": "import skills\n\nasync def main():\n    result = await skills.load(\"fetch_and_store_documentation\").fetch_and_store(\n        url=\"https://example.com/documentation\",\n        file_path=\"output/documentation.txt\",\n    )\n    return result\n"
+		}
+	]
+}

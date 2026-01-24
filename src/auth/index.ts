@@ -68,65 +68,68 @@
  * @module
  */
 
-// Types
-export type {
-    MCPCredentials,
-    MCPToken,
-    ValidationResult,
-    ClientStatus,
-    JWTClaims,
-    MCPAgentClientConfig,
-    MCPResourceServerConfig,
-    MCPAdminClientConfig,
-    TokenResponse,
-    RegistrationResponse,
-    IntrospectionResponse,
-    ClientStatusResponse,
-    ProtectedResourceMetadata,
-    RateLimitInfo,
-    ValidationErrorCode,
-} from './types';
-
 export {
-    DEFAULT_TOKEN_TTL,
-    CLIENT_CACHE_TTL,
-    JWKS_CACHE_TTL,
-    isTokenExpired,
-    isClientStatusStale,
-} from './types';
+	type CreateInviteParams,
+	type InviteResult,
+	MCPAdminClient,
+} from "./admin-client";
+// Clients
+export { MCPAgentClient, type RegisterOptions } from "./agent-client";
 
 // Errors
 export {
-    MCPError,
-    MCPRegistrationError,
-    MCPAuthError,
-    MCPValidationError,
-    MCPRateLimitError,
-} from './errors';
-
-// JWT utilities
-export {
-    decodeJWT,
-    isJWT,
-    decodeJWTHeader,
-    isJWTExpired,
-    checkJWTAudience,
-    extractClientId,
-    extractScopes,
-} from './jwt';
-
-// JWKS and signature verification
-export { JWKSManager, verifyJWT } from './jwks';
-
-// Clients
-export { MCPAgentClient, type RegisterOptions } from './agent-client';
-export { MCPResourceServer, type ValidateTokenOptions } from './resource-server';
-export { MCPAdminClient, type CreateInviteParams, type InviteResult } from './admin-client';
-
+	MCPAuthError,
+	MCPError,
+	MCPRateLimitError,
+	MCPRegistrationError,
+	MCPValidationError,
+} from "./errors";
 // Helpers
 export {
-    registerAgent,
-    getAccessToken,
-    validateToken,
-    extractBearerToken,
-} from './helpers';
+	extractBearerToken,
+	getAccessToken,
+	registerAgent,
+	validateToken,
+} from "./helpers";
+
+// JWKS and signature verification
+export { JWKSManager, verifyJWT } from "./jwks";
+// JWT utilities
+export {
+	checkJWTAudience,
+	decodeJWT,
+	decodeJWTHeader,
+	extractClientId,
+	extractScopes,
+	isJWT,
+	isJWTExpired,
+} from "./jwt";
+export {
+	MCPResourceServer,
+	type ValidateTokenOptions,
+} from "./resource-server";
+// Types
+export type {
+	ClientStatus,
+	ClientStatusResponse,
+	IntrospectionResponse,
+	JWTClaims,
+	MCPAdminClientConfig,
+	MCPAgentClientConfig,
+	MCPCredentials,
+	MCPResourceServerConfig,
+	MCPToken,
+	ProtectedResourceMetadata,
+	RateLimitInfo,
+	RegistrationResponse,
+	TokenResponse,
+	ValidationErrorCode,
+	ValidationResult,
+} from "./types";
+export {
+	CLIENT_CACHE_TTL,
+	DEFAULT_TOKEN_TTL,
+	isClientStatusStale,
+	isTokenExpired,
+	JWKS_CACHE_TTL,
+} from "./types";

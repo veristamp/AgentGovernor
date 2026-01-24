@@ -1,14 +1,39 @@
-import aiohttp
-import asyncio
+"""
+Fetch and Store Documentation Skill.
 
-async def fetch_and_store(url: str, file_path: str) -> None:
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            content = await response.text()
-            with open(file_path, 'w') as file:
-                file.write(content)
+Downloads documentation from a URL using the terminal tool and writes it to disk.
+"""
+from __future__ import annotations
 
-if __name__ == '__main__':
-    url = 'https://example.com/documentation'
-    file_path = 'documentation.txt'
-    asyncio.run(fetch_and_store(url, file_path))
+import json
+from typing import Any, Dict
+
+_bindings: Dict[str, Any]
+
+
+async def fetch_and_store(url: str, file_path: str) -> Dict[str, Any]:
+    """
+    Fetch documentation from a URL and save it to a file.
+
+    Args:
+        url: Documentation URL to fetch.
+        file_path: Output file path for the downloaded content.
+
+    Returns:
+        Dict with URL, file path, and status metadata.
+    """
+    shell = _bindings["shell"]
+    fs = _bindings["fs"]
+
+    command = f'curl -L "{url}"'
+    result = await getattr(shell, "run-command")(command=command)
+    content = result
+    if isinstance(result, dict):
+        content = result.get("stdout") or result.get("output") or json.dumps(result)
+    await getattr(fs, "write-file")(path=file_path, content=str(content))
+
+    return {
+        "url": url,
+        "file_path": file_path,
+        "status": "ok",
+    }

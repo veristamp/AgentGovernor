@@ -4,10 +4,10 @@
  * One-shot helper functions for common operations.
  */
 
-import { MCPAgentClient } from './agent-client';
-import { MCPResourceServer } from './resource-server';
-import type { ValidateTokenOptions } from './resource-server';
-import type { MCPCredentials, MCPToken, ValidationResult } from './types';
+import { MCPAgentClient } from "./agent-client";
+import type { ValidateTokenOptions } from "./resource-server";
+import { MCPResourceServer } from "./resource-server";
+import type { MCPCredentials, MCPToken, ValidationResult } from "./types";
 
 /**
  * One-shot agent registration.
@@ -18,12 +18,12 @@ import type { MCPCredentials, MCPToken, ValidationResult } from './types';
  * @returns MCPCredentials
  */
 export async function registerAgent(
-    authServer: string,
-    regJwt: string,
-    clientName: string
+	authServer: string,
+	regJwt: string,
+	clientName: string,
 ): Promise<MCPCredentials> {
-    const client = new MCPAgentClient({ authServer, regJwt });
-    return client.register(clientName);
+	const client = new MCPAgentClient({ authServer, regJwt });
+	return client.register(clientName);
 }
 
 /**
@@ -37,15 +37,15 @@ export async function registerAgent(
  * @returns Access token string
  */
 export async function getAccessToken(
-    authServer: string,
-    clientId: string,
-    clientSecret: string,
-    scopes?: string[],
-    audience?: string
+	authServer: string,
+	clientId: string,
+	clientSecret: string,
+	scopes?: string[],
+	audience?: string,
 ): Promise<string> {
-    const client = new MCPAgentClient({ authServer, clientId, clientSecret });
-    const token = await client.getToken(scopes, audience);
-    return token.accessToken;
+	const client = new MCPAgentClient({ authServer, clientId, clientSecret });
+	const token = await client.getToken(scopes, audience);
+	return token.accessToken;
 }
 
 /**
@@ -58,21 +58,21 @@ export async function getAccessToken(
  * @returns ValidationResult
  */
 export async function validateToken(
-    authServer: string,
-    myAudience: string,
-    token: string,
-    options?: ValidateTokenOptions
+	authServer: string,
+	myAudience: string,
+	token: string,
+	options?: ValidateTokenOptions,
 ): Promise<ValidationResult> {
-    const server = new MCPResourceServer({ authServer, myAudience });
-    return server.validateToken(token, options);
+	const server = new MCPResourceServer({ authServer, myAudience });
+	return server.validateToken(token, options);
 }
 
 /**
  * Extract Bearer token from Authorization header.
  */
 export function extractBearerToken(authHeader?: string): string | null {
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return null;
-    }
-    return authHeader.slice(7);
+	if (!authHeader || !authHeader.startsWith("Bearer ")) {
+		return null;
+	}
+	return authHeader.slice(7);
 }

@@ -4,88 +4,88 @@
  */
 
 export interface ServerConfig {
-    /** Connection type: stdio, streamable_http, or sse */
-    type: 'stdio' | 'streamable_http' | 'sse';
+	/** Connection type: stdio, streamable_http, or sse */
+	type: "stdio" | "streamable_http" | "sse";
 
-    // stdio options
-    command?: string;
-    args?: string[];
-    cwd?: string;
-    env?: Record<string, string>;
+	// stdio options
+	command?: string;
+	args?: string[];
+	cwd?: string;
+	env?: Record<string, string>;
 
-    // HTTP options
-    url?: string;
-    headers?: Record<string, string>;
-    
-    // Timeout options (for all types)
-    timeout?: number;
-    sseReadTimeout?: number;
-    
-    // Feature flags
-    terminateOnClose?: boolean;
+	// HTTP options
+	url?: string;
+	headers?: Record<string, string>;
+
+	// Timeout options (for all types)
+	timeout?: number;
+	sseReadTimeout?: number;
+
+	// Feature flags
+	terminateOnClose?: boolean;
 }
 
 export interface Config {
-    mcpServers: Record<string, ServerConfig>;
+	mcpServers: Record<string, ServerConfig>;
 }
 
 export interface ToolInfo {
-    name: string;
-    description?: string;
-    inputSchema?: Record<string, unknown>;
+	name: string;
+	description?: string;
+	inputSchema?: Record<string, unknown>;
 }
 
 export interface ResourceInfo {
-    uri: string;
-    name?: string;
-    description?: string;
-    mimeType?: string;
+	uri: string;
+	name?: string;
+	description?: string;
+	mimeType?: string;
 }
 
 export interface PromptInfo {
-    name: string;
-    description?: string;
-    arguments?: Array<{
-        name: string;
-        description?: string;
-        required?: boolean;
-    }>;
+	name: string;
+	description?: string;
+	arguments?: Array<{
+		name: string;
+		description?: string;
+		required?: boolean;
+	}>;
 }
 
 export interface Capabilities {
-    tools: Map<string, ToolInfo>;
-    resources: Map<string, ResourceInfo>;
-    prompts: Map<string, PromptInfo>;
+	tools: Map<string, ToolInfo>;
+	resources: Map<string, ResourceInfo>;
+	prompts: Map<string, PromptInfo>;
 }
 
 export interface Action {
-    actionType: 'tool' | 'resource' | 'prompt';
-    actionName: string;
-    arguments?: Record<string, unknown>;
+	actionType: "tool" | "resource" | "prompt";
+	actionName: string;
+	arguments?: Record<string, unknown>;
 }
 
 export interface ExecutionContext {
-    /** JWT token for identity */
-    jwt?: string;
-    /** Identity ID extracted from JWT */
-    identityId?: string;
-    /** Scopes from JWT */
-    scopes?: string[];
-    /** Roles from JWT (for RBAC) */
-    roles?: string[];
-    /** Organization ID from JWT */
-    orgId?: string;
-    /** Mission ID for audit trail */
-    missionId?: string;
+	/** JWT token for identity */
+	jwt?: string;
+	/** Identity ID extracted from JWT */
+	identityId?: string;
+	/** Scopes from JWT */
+	scopes?: string[];
+	/** Roles from JWT (for RBAC) */
+	roles?: string[];
+	/** Organization ID from JWT */
+	orgId?: string;
+	/** Mission ID for audit trail */
+	missionId?: string;
 }
 
 export interface AuditEntry {
-    timestamp: Date;
-    missionId?: string;
-    identityId?: string;
-    tool: string;
-    args: Record<string, unknown>;
-    result?: unknown;
-    error?: string;
-    latencyMs: number;
+	timestamp: Date;
+	missionId?: string;
+	identityId?: string;
+	tool: string;
+	args: Record<string, unknown>;
+	result?: unknown;
+	error?: string;
+	latencyMs: number;
 }

@@ -1,35 +1,32 @@
 {
-  "qualifiedName": "filesystem.write-file",
-  "serverPrefix": "filesystem",
-  "name": "write-file",
-  "originalName": "write-file",
-  "description": "Create or overwrite a file with new content asynchronously.\n\nArgs:\n    path: Path to the file\n    content: Content to write (string or base64-encoded for binary)\n    encoding: \"utf-8\" for text files (default), \"base64\" for binary files\n\nFor binary files, pass base64-encoded content and set encoding=\"base64\".\nOverwrites existing files without warning. Only works within allowed directories.",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string",
-        "description": "Path to the file"
-      },
-      "content": {
-        "type": "string",
-        "description": "Content to write (string or base64-encoded for binary)"
-      },
-      "encoding": {
-        "default": "utf-8",
-        "description": "\"utf-8\" for text files (default), \"base64\" for binary files",
-        "type": "string"
-      },
-      "max_bytes": {
-        "default": 2000000,
-        "description": "Maximum bytes to write",
-        "type": "number"
-      }
-    },
-    "required": [
-      "path",
-      "content"
-    ],
-    "$schema": "http://json-schema.org/draft-07/schema#"
-  }
+	"qualifiedName": "filesystem.write-file",
+	"serverPrefix": "filesystem",
+	"name": "write-file",
+	"originalName": "write-file",
+	"description": "Create or overwrite a file with new content asynchronously.\n\nArgs:\n    path: Path to the file\n    content: Content to write (string or base64-encoded for binary)\n    encoding: \"utf-8\" for text files (default), \"base64\" for binary files\n\nFor binary files, pass base64-encoded content and set encoding=\"base64\".\nOverwrites existing files without warning. Only works within allowed directories.",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"path": {
+				"type": "string",
+				"description": "Path to the file"
+			},
+			"content": {
+				"type": "string",
+				"description": "Content to write (string or base64-encoded for binary)"
+			},
+			"encoding": {
+				"default": "utf-8",
+				"description": "\"utf-8\" for text files (default), \"base64\" for binary files",
+				"type": "string"
+			},
+			"max_bytes": {
+				"default": 2000000,
+				"description": "Maximum bytes to write",
+				"type": "number"
+			}
+		},
+		"required": ["path", "content"],
+		"$schema": "http://json-schema.org/draft-07/schema#"
+	}
 }

@@ -2,5 +2,9 @@
  * Socket Server - Barrel Export
  */
 
-export { SocketServer, createSocketServer, type SocketServerOptions } from './server';
-export * from './protocol';
+export * from "./protocol";
+export {
+	createSocketServer,
+	SocketServer,
+	type SocketServerOptions,
+} from "./server";

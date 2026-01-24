@@ -2,7 +2,11 @@
  * MCP Client - Barrel Export
  */
 
-export { MCPClientManager, getMCPClientManager, closeMCPClientManager } from './manager';
-export { CapabilityIndex } from './indices';
-export { loadConfig, defaultServerPrefix } from './config';
-export * from './types';
+export { defaultServerPrefix, loadConfig } from "./config";
+export { CapabilityIndex } from "./indices";
+export {
+	closeMCPClientManager,
+	getMCPClientManager,
+	MCPClientManager,
+} from "./manager";
+export * from "./types";

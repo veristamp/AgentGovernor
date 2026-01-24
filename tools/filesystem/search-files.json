@@ -1,33 +1,30 @@
 {
-  "qualifiedName": "filesystem.search-files",
-  "serverPrefix": "filesystem",
-  "name": "search-files",
-  "originalName": "search-files",
-  "description": "Recursively search for files matching a pattern.\nCase-insensitive, returns full paths. Only works within allowed directories.",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string",
-        "description": "Path to search in"
-      },
-      "pattern": {
-        "type": "string",
-        "description": "Search pattern"
-      },
-      "exclude_patterns": {
-        "default": [],
-        "description": "Patterns to exclude",
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      }
-    },
-    "required": [
-      "path",
-      "pattern"
-    ],
-    "$schema": "http://json-schema.org/draft-07/schema#"
-  }
+	"qualifiedName": "filesystem.search-files",
+	"serverPrefix": "filesystem",
+	"name": "search-files",
+	"originalName": "search-files",
+	"description": "Recursively search for files matching a pattern.\nCase-insensitive, returns full paths. Only works within allowed directories.",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"path": {
+				"type": "string",
+				"description": "Path to search in"
+			},
+			"pattern": {
+				"type": "string",
+				"description": "Search pattern"
+			},
+			"exclude_patterns": {
+				"default": [],
+				"description": "Patterns to exclude",
+				"type": "array",
+				"items": {
+					"type": "string"
+				}
+			}
+		},
+		"required": ["path", "pattern"],
+		"$schema": "http://json-schema.org/draft-07/schema#"
+	}
 }

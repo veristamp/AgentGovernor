@@ -1,52 +1,36 @@
 {
-  "FileSystem": {
-    "connection_type": "stdio",
-    "command": "bun",
-    "args": [
-      "run",
-      "filesystem.ts"
-    ],
-    "cwd": ".",
-    "timeout": 5.0,
-    "disabled": false
-  },
-  "Terminal": {
-    "connection_type": "stdio",
-    "command": "uv",
-    "args": [
-      "run",
-      "terminal.py"
-    ],
-    "cwd": ".",
-    "timeout": 5.0,
-    "disabled": false
-  },
-  "Memory": {
-    "connection_type": "stdio",
-    "command": "bun",
-    "args": [
-      "run",
-      "memory.ts"
-    ],
-    "cwd": ".",
-    "timeout": 5.0,
-    "disabled": false
-  },
-  "context7": {
-    "command": "npx",
-    "args": [
-      "-y",
-      "@upstash/context7-mcp@latest"
-    ],
-    "disabled": false
-  },
-  "modelcontextprotocol python sdk": {
-    "command": "npx",
-    "args": [
-      "-y",
-      "mcp-code-graph@latest",
-      "modelcontextprotocol/python-sdk"
-    ],
-    "disabled": false
-  }
+	"FileSystem": {
+		"connection_type": "stdio",
+		"command": "bun",
+		"args": ["run", "filesystem.ts"],
+		"cwd": ".",
+		"timeout": 5.0,
+		"disabled": false
+	},
+	"Terminal": {
+		"connection_type": "stdio",
+		"command": "uv",
+		"args": ["run", "terminal.py"],
+		"cwd": ".",
+		"timeout": 5.0,
+		"disabled": false
+	},
+	"Memory": {
+		"connection_type": "stdio",
+		"command": "bun",
+		"args": ["run", "memory.ts"],
+		"cwd": ".",
+		"timeout": 5.0,
+		"disabled": false
+	},
+	"context7": {
+		"command": "npx",
+		"args": ["-y", "@upstash/context7-mcp@latest"],
+		"disabled": false
+	},
+	"modelcontextprotocol python sdk": {
+		"command": "npx",
+		"args": ["-y", "mcp-code-graph@latest", "modelcontextprotocol/python-sdk"],
+		"disabled": false
+	}
 }

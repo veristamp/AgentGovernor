@@ -1,33 +1,34 @@
 {
-  "name": "mcp-inspector",
-  "version": "2.0.0",
-  "description": "Governed Code Mode - Secure AI Agent Execution Framework",
-  "module": "src/index.ts",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "bun run --watch src/index.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "analyze": "uv run auditor/analyzer.py",
-    "execute": "bun run src/index.ts --execute",
-    "sync": "bun run src/sync-registry.ts"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^25.0.6",
-    "drizzle-kit": "^0.31.8"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.2",
-    "@types/pg": "^8.16.0",
-    "drizzle-orm": "^0.45.1",
-    "pg": "^8.17.2",
-    "postgres": "^3.4.8",
-    "zod": "^4.3.5"
-  }
+	"name": "mcp-inspector",
+	"version": "2.0.0",
+	"description": "Governed Code Mode - Secure AI Agent Execution Framework",
+	"module": "src/index.ts",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"dev": "bun run --watch src/index.ts",
+		"typecheck": "tsc --noEmit",
+		"test": "bun test",
+		"analyze": "uv run auditor/analyzer.py",
+		"execute": "bun run src/index.ts --execute",
+		"sync": "bun run src/sync-registry.ts"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.12",
+		"@types/bun": "latest",
+		"@types/node": "^25.0.6",
+		"drizzle-kit": "^0.31.8"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.25.2",
+		"@types/pg": "^8.16.0",
+		"drizzle-orm": "^0.45.1",
+		"pg": "^8.17.2",
+		"postgres": "^3.4.8",
+		"zod": "^4.3.5"
+	}
 }

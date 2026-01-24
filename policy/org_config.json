@@ -1,0 +1,8 @@
+{
+	"default": {
+		"policyRulesPath": "policy/policy_rules.json",
+		"rolePermissionsPath": "policy/role_permissions.json",
+		"skillGateConfigPath": "policy/skill_gate.json"
+	},
+	"orgs": {}
+}

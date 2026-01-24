@@ -11,3 +11,17 @@ Fetch documentation from Context7 and persist it to a local file. This skill res
 - context7.query-docs
 - filesystem.create-directory
 - filesystem.write-file
+
+## Examples
+
+```python
+import skills
+
+async def main():
+    result = await skills.load("docs-to-files").fetch_and_store(
+        library="/vercel/next.js",
+        topic="routing",
+        output_dir="output/docs",
+    )
+    return result
+```

@@ -2,11 +2,14 @@
  * Policy Module - Barrel Export
  */
 
-export { PolicyEngine, DEFAULT_RULES } from './engine';
-export * from './types';
-export * from './roles';
-
 // Re-export from auth module for backwards compatibility
-export { MCPResourceServer as AuthSDK } from '../auth';
-export { MCPAuthError as AuthError } from '../auth';
-export { extractBearerToken } from '../auth';
+export {
+	extractBearerToken,
+	MCPAuthError as AuthError,
+	MCPResourceServer as AuthSDK,
+} from "../auth";
+export * from "./admin";
+export { DEFAULT_RULES, PolicyEngine } from "./engine";
+export * from "./org_config";
+export * from "./roles";
+export * from "./types";
