@@ -264,7 +264,7 @@ async function main(): Promise<number> {
 
     let allAllowed = true;
     for (const skill of manifest.skills ?? []) {
-        const decision = manager.checkPolicy(identity, skill);
+        const decision = await manager.checkPolicy(identity, skill);
         const status = decision.allowed ? '✅' : '❌';
         console.log(`   ${status} ${skill}: ${decision.allowed ? 'ALLOWED' : decision.reason}`);
         if (!decision.allowed) allAllowed = false;
@@ -318,13 +318,13 @@ async function main(): Promise<number> {
 
     console.log('\n🔒 Pre-checking policy for malicious manifest...');
     for (const skill of maliciousManifest.skills ?? []) {
-        const decision = manager.checkPolicy(identity, skill);
+        const decision = await manager.checkPolicy(identity, skill);
         const status = decision.allowed ? '✅' : '❌';
         console.log(`   ${status} ${skill}: ${decision.allowed ? 'ALLOWED (within role)' : decision.reason}`);
     }
 
     const deniedSkill = 'skills:repo-insight@1';
-    const deniedDecision = manager.checkPolicy({
+    const deniedDecision = await manager.checkPolicy({
         ...identity,
         roles: ['mcp:docs-curator'],
     }, deniedSkill);

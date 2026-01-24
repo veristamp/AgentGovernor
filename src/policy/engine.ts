@@ -24,12 +24,11 @@ export class PolicyEngine {
         }
     }
 
-    loadRulesFromFile(filePath: string): void {
-        const { readFileSync, existsSync } = require('fs') as typeof import('fs');
-        if (!existsSync(filePath)) {
+    async loadRulesFromFile(filePath: string): Promise<void> {
+        if (!(await Bun.file(filePath).exists())) {
             return;
         }
-        const raw = readFileSync(filePath, 'utf-8');
+        const raw = await Bun.file(filePath).text();
         const parsed = JSON.parse(raw) as { rules?: PolicyRule[] };
         if (parsed.rules) {
             this.loadRules(parsed.rules);
@@ -55,7 +54,7 @@ export class PolicyEngine {
     /**
      * Check if an action is allowed.
      */
-    check(request: PolicyRequest): PolicyDecision {
+    async check(request: PolicyRequest): Promise<PolicyDecision> {
         const { identity, action, resource } = request;
 
         // 1. Check if identity is revoked
@@ -75,7 +74,7 @@ export class PolicyEngine {
         }
 
         // 3. Check permission via RBAC (roles) or OAuth scopes
-        const hasRbacPermission = this.hasPermission(identity, action);
+        const hasRbacPermission = await this.hasPermission(identity, action);
 
         // 4. Evaluate explicit rules (deny rules take precedence)
         for (const rule of this.rules) {
@@ -141,20 +140,20 @@ export class PolicyEngine {
     /**
      * Check multiple actions at once (for manifest pre-check).
      */
-    checkManifest(identity: Identity, manifest: Manifest): PolicyDecision[] {
-        return manifest.skills.map((skill) =>
+    async checkManifest(identity: Identity, manifest: Manifest): Promise<PolicyDecision[]> {
+        return Promise.all(manifest.skills.map((skill) =>
             this.check({ identity, action: skill })
-        );
+        ));
     }
 
     /**
      * Quick check if all manifest skills are allowed.
      */
-    isManifestAllowed(identity: Identity, manifest: Manifest): { allowed: boolean; violations: string[] } {
+    async isManifestAllowed(identity: Identity, manifest: Manifest): Promise<{ allowed: boolean; violations: string[] }> {
         const violations: string[] = [];
 
         for (const skill of manifest.skills) {
-            const decision = this.check({ identity, action: skill });
+            const decision = await this.check({ identity, action: skill });
             if (!decision.allowed) {
                 violations.push(`${skill}: ${decision.reason}`);
             }
@@ -173,10 +172,10 @@ export class PolicyEngine {
      * Check if identity has permission to perform action.
      * Uses RBAC first (roles -> permissions), then falls back to OAuth scopes.
      */
-    private hasPermission(identity: Identity, action: string): boolean {
+    private async hasPermission(identity: Identity, action: string): Promise<boolean> {
         // 1. Check RBAC (roles mapped to tool permissions)
         if (identity.roles && identity.roles.length > 0) {
-            const rbacResult = checkRoleAccess(identity.roles, action);
+            const rbacResult = await checkRoleAccess(identity.roles, action);
             if (rbacResult.allowed) {
                 return true;
             }

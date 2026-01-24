@@ -1,6 +1,6 @@
 import { SkillRegistry } from '../skills_registry/registry';
 import { PolicyEngine } from '../policy/engine';
-import { getRolePermissions, matchesPermission } from '../policy/roles';
+import { getRolePermissionsAsync, matchesPermission } from '../policy/roles';
 import type { AgentIdentityScope, AgentSkillDetail, AgentSkillSummary } from './types';
 
 export interface SkillCatalogOptions {
@@ -24,11 +24,17 @@ export class SkillCatalog {
 
     async search(query: string, identity: AgentIdentityScope, limit: number = 10): Promise<AgentSkillSummary[]> {
         const results = await this.registry.search(query, limit);
-        return results.filter((skill) => this.isSkillAllowed(skill.skillRef, identity));
+        const filtered: AgentSkillSummary[] = [];
+        for (const skill of results) {
+            if (await this.isSkillAllowed(skill.skillRef, identity)) {
+                filtered.push(skill);
+            }
+        }
+        return filtered;
     }
 
     async inspect(skillRef: string, identity: AgentIdentityScope): Promise<AgentSkillDetail | null> {
-        if (!this.isSkillAllowed(skillRef, identity)) {
+        if (!(await this.isSkillAllowed(skillRef, identity))) {
             return null;
         }
         const detail = await this.registry.inspect(skillRef);
@@ -44,18 +50,25 @@ export class SkillCatalog {
 
     async listAllowed(identity: AgentIdentityScope, limit: number = 200): Promise<AgentSkillSummary[]> {
         const all = await this.registry.listAll();
-        return all.filter((skill: AgentSkillSummary) => this.isSkillAllowed(skill.skillRef, identity)).slice(0, limit);
+        const filtered: AgentSkillSummary[] = [];
+        for (const skill of all) {
+            if (await this.isSkillAllowed(skill.skillRef, identity)) {
+                filtered.push(skill);
+            }
+            if (filtered.length >= limit) break;
+        }
+        return filtered;
     }
 
-    private isSkillAllowed(skillRef: string, identity: AgentIdentityScope): boolean {
-        const permissions = getRolePermissions(identity.roles ?? []);
+    private async isSkillAllowed(skillRef: string, identity: AgentIdentityScope): Promise<boolean> {
+        const permissions = await getRolePermissionsAsync(identity.roles ?? []);
         if (matchesPermission(permissions, '*')) {
             return true;
         }
         if (matchesPermission(permissions, skillRef)) {
             return true;
         }
-        const decision = this.policy.check({
+        const decision = await this.policy.check({
             identity: {
                 id: 'agent',
                 type: 'agent',

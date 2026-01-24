@@ -47,7 +47,10 @@ export class MCPClientManager {
         // Handle legacy string argument
         const opts = typeof options === 'string' ? { configPath: options } : options;
 
-        this.config = loadConfig(opts.configPath);
+        // Initialize config (will be loaded async in initialize)
+        this.config = { mcpServers: {} }; 
+        const configPath = opts.configPath; 
+        
         this.index = new CapabilityIndex();
         this.enablePolicy = opts.enablePolicy ?? false;
         this.enableAuth = opts.enableAuth ?? false;
@@ -64,6 +67,9 @@ export class MCPClientManager {
             const myAudience = opts.myAudience ?? process.env.MCP_MY_AUDIENCE ?? 'mcp://gcm';
             this.resourceServer = new MCPResourceServer({ authServer, myAudience });
         }
+        
+        // Store config path for initialize
+        (this as any)._configPath = configPath;
     }
 
     // ============== Lifecycle ==============
@@ -72,6 +78,9 @@ export class MCPClientManager {
         console.log('[MCPClientManager] Initializing...');
         console.log(`[MCPClientManager] Policy: ${this.enablePolicy ? 'ENABLED' : 'disabled'}`);
         console.log(`[MCPClientManager] Auth: ${this.enableAuth ? 'ENABLED' : 'disabled'}`);
+
+        const configPath = (this as any)._configPath;
+        this.config = await loadConfig(configPath);
 
         const servers = Object.entries(this.config.mcpServers);
         if (servers.length === 0) {
@@ -274,11 +283,11 @@ export class MCPClientManager {
     /**
      * Check if an action is allowed for an identity.
      */
-    checkPolicy(identity: Identity, action: string, resource?: string): PolicyDecision {
+    async checkPolicy(identity: Identity, action: string, resource?: string): Promise<PolicyDecision> {
         if (!this.policyEngine) {
             return { allowed: true, reason: 'Policy not enabled' };
         }
-        return this.policyEngine.check({ identity, action, resource });
+        return await this.policyEngine.check({ identity, action, resource });
     }
 
     // ============== Execution (GATE 2) ==============
@@ -335,7 +344,7 @@ export class MCPClientManager {
 
         // 2. Check policy if enabled
         if (this.policyEngine && identity) {
-            const decision = this.policyEngine.check({
+            const decision = await this.policyEngine.check({
                 identity,
                 action: actionName,
             });

@@ -14,7 +14,6 @@
 import { MCPClientManager } from './mcp-client';
 import { createSocketServer, SocketServer } from './socket-server';
 import { launchSandbox, launchUnsafe, isNsJailAvailable } from '../sandbox/launcher';
-import { readFileSync, existsSync } from 'fs';
 import { platform } from 'os';
 import { SkillCreatorAgent } from './skill_creator';
 import { LlmClient } from './agent';
@@ -166,7 +165,7 @@ Skill Creation Mode:
         const llmBase = process.env.LLM_API_BASE || 'http://localhost:1234/v1';
         const llmModel = process.env.LLM_MODEL_NAME || 'granite-4.0-micro';
         const policy = new PolicyEngine();
-        policy.loadRulesFromFile('policy/policy_rules.json');
+        await policy.loadRulesFromFile('policy/policy_rules.json');
         const agent = new SkillCreatorAgent(
             { llm: new LlmClient(llmBase, ''), policy },
             {
@@ -225,12 +224,12 @@ Skill Creation Mode:
 
     if (executeFile) {
         // Execute mode
-        if (!existsSync(executeFile)) {
+        if (!(await Bun.file(executeFile).exists())) {
             console.error(`File not found: ${executeFile}`);
             process.exit(1);
         }
 
-        const code = readFileSync(executeFile, 'utf-8');
+        const code = await Bun.file(executeFile).text();
 
         try {
             const result = await executeWorkflow(gcm, code);

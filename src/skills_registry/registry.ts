@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, readdirSync } from 'fs';
+import { readdir } from 'node:fs/promises';
 import { join, resolve } from 'path';
 import { db, toTsVector } from '../registry/db';
 import { skills } from '../registry/schema';
@@ -30,36 +30,38 @@ export class SkillRegistry {
      * Scan disk and populate Postgres
      */
     public async ingest() {
-        if (!existsSync(this.skillsDir)) return;
-        
-        const entries = readdirSync(this.skillsDir, { withFileTypes: true });
-        let count = 0;
+        try {
+            const entries = await readdir(this.skillsDir, { withFileTypes: true });
+            let count = 0;
 
-        for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const skillDir = join(this.skillsDir, entry.name);
-            
-            try {
-                const summary = this.readSkillFromDisk(skillDir);
-                if (summary) {
-                    await this.upsert(summary);
-                    count++;
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const skillDir = join(this.skillsDir, entry.name);
+                
+                try {
+                    const summary = await this.readSkillFromDisk(skillDir);
+                    if (summary) {
+                        await this.upsert(summary);
+                        count++;
+                    }
+                } catch (e) {
+                    console.error(`[SkillRegistry] Failed to load skill ${entry.name}:`, e);
                 }
-            } catch (e) {
-                console.error(`[SkillRegistry] Failed to load skill ${entry.name}:`, e);
             }
-        }
-        
-        if (count > 0) {
-            console.log(`[SkillRegistry] Ingested ${count} skills.`);
+            
+            if (count > 0) {
+                console.log(`[SkillRegistry] Ingested ${count} skills.`);
+            }
+        } catch (e) {
+            // Directory might not exist
         }
     }
 
-    private readSkillFromDisk(skillDir: string): SkillSummary | null {
+    private async readSkillFromDisk(skillDir: string): Promise<SkillSummary | null> {
         const manifestPath = join(skillDir, 'manifest.json');
-        if (!existsSync(manifestPath)) return null;
+        if (!(await Bun.file(manifestPath).exists())) return null;
 
-        const raw = readFileSync(manifestPath, 'utf-8');
+        const raw = await Bun.file(manifestPath).text();
         const data = JSON.parse(raw);
         const skillId = String(data.skillId ?? '').trim();
         if (!skillId) return null;
@@ -72,8 +74,8 @@ export class SkillRegistry {
         let description = '';
         let interfaces: string[] = [];
         
-        if (existsSync(docPath)) {
-            const docContent = readFileSync(docPath, 'utf-8');
+        if (await Bun.file(docPath).exists()) {
+            const docContent = await Bun.file(docPath).text();
             const firstLine = docContent.split('\n')[0];
             description = (firstLine ?? '').replace(/^#\s+/, '').trim(); 
             const lines = docContent.split('\n');
@@ -85,6 +87,22 @@ export class SkillRegistry {
             }
             if (data.interfaces && Array.isArray(data.interfaces)) {
                 interfaces = data.interfaces;
+            } else {
+                // Parse interfaces from SKILL.md
+                let inInterfaceSection = false;
+                for (const line of lines) {
+                    if (line.match(/^##\s+Interface/i)) {
+                        inInterfaceSection = true;
+                        continue;
+                    }
+                    if (inInterfaceSection) {
+                        if (line.startsWith('##')) break; 
+                        const match = line.match(/[`']?([\w_]+\([^)]*\))[`']?/);
+                        if (match) {
+                            interfaces.push(match[1] as string);
+                        }
+                    }
+                }
             }
         }
 

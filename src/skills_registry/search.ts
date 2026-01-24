@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, readdirSync } from 'fs';
+import { readdir } from 'node:fs/promises';
 import { join, resolve } from 'path';
 import type { GcmSignature, GcmRegistrySearchResult } from './schema';
 import type { SkillSummary, SkillSearchResult } from './registry';
@@ -22,40 +22,44 @@ export class GcmRegistrySearch {
         // Ensure legacy registry is loaded for fallback/migration
         await this.legacyRegistry.ingest();
         
-        const entries = existsSync(resolved) ? readdirSync(resolved, { withFileTypes: true }) : [];
-        this.signatures = [];
+        try {
+            const entries = await readdir(resolved, { withFileTypes: true });
+            this.signatures = [];
 
-        for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const skillDir = join(resolved, entry.name);
-            const sigPath = join(skillDir, 'signature.json');
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const skillDir = join(resolved, entry.name);
+                const sigPath = join(skillDir, 'signature.json');
 
-            if (existsSync(sigPath)) {
-                try {
-                    const sig = JSON.parse(readFileSync(sigPath, 'utf-8')) as GcmSignature;
-                    this.signatures.push(sig);
-                } catch (e) {
-                    console.error(`Failed to load signature for ${entry.name}:`, e);
-                }
-            } else {
-                // "Just-in-Time Compilation" from Legacy
-                const legacySkill = (await this.legacyRegistry.inspect(`skills:${entry.name}@1`))
-                                 || (await this.legacyRegistry.listAll()).find(s => s.skillId === entry.name);
-                
-                if (legacySkill) {
-                    // Convert Legacy to Signature
-                    this.signatures.push({
-                        id: `skills.${entry.name}`,
-                        version: String(legacySkill.version),
-                        description: legacySkill.description.slice(0, 200), // Truncate for efficiency
-                        keywords: legacySkill.skillId.split('-'),
-                        parameters: {}, // Legacy doesn't have strict param schema easily available without parsing lib.py
-                        compute_cost: 'medium',
-                        required_policies: [],
-                        fanout_tools: legacySkill.fanoutTools
-                    });
+                if (await Bun.file(sigPath).exists()) {
+                    try {
+                        const sig = await Bun.file(sigPath).json();
+                        this.signatures.push(sig);
+                    } catch (e) {
+                        console.error(`Failed to load signature for ${entry.name}:`, e);
+                    }
+                } else {
+                    // "Just-in-Time Compilation" from Legacy
+                    const legacySkill = (await this.legacyRegistry.inspect(`skills:${entry.name}@1`))
+                                     || (await this.legacyRegistry.listAll()).find(s => s.skillId === entry.name);
+                    
+                    if (legacySkill) {
+                        // Convert Legacy to Signature
+                        this.signatures.push({
+                            id: `skills.${entry.name}`,
+                            version: String(legacySkill.version),
+                            description: legacySkill.description.slice(0, 200), // Truncate for efficiency
+                            keywords: legacySkill.skillId.split('-'),
+                            parameters: {}, // Legacy doesn't have strict param schema easily available without parsing lib.py
+                            compute_cost: 'medium',
+                            required_policies: [],
+                            fanout_tools: legacySkill.fanoutTools
+                        });
+                    }
                 }
             }
+        } catch (e) {
+            // Directory might not exist
         }
     }
 

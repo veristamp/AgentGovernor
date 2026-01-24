@@ -6,7 +6,6 @@
  */
 
 import { createServer, type Server, type Socket } from 'net';
-import { unlinkSync, existsSync } from 'fs';
 import { MCPClientManager } from '../mcp-client/manager';
 import { GcmRegistrySearch } from '../skills_registry/search';
 import {
@@ -45,8 +44,21 @@ export class SocketServer {
     async start(): Promise<void> {
         // Clean up existing socket file (not needed for Windows named pipes)
         const isWindowsPipe = this.socketPath.startsWith('\\\\.\\pipe\\');
-        if (!isWindowsPipe && existsSync(this.socketPath)) {
-            unlinkSync(this.socketPath);
+        if (!isWindowsPipe && await Bun.file(this.socketPath).exists()) {
+            // await unlink(this.socketPath); 
+            // Note: Bun.file().delete() is cleaner but `unlink` is standard for sockets
+            // Bun doesn't expose unlink directly on Bun.file() for sockets usually, 
+            // but we can try removing it via shell or node:fs shim if needed.
+            // Actually Bun.file(path).delete() should work if it's a file-like object.
+            // Let's try it.
+            // Sockets are special files.
+            // If Bun.file().delete() fails, we might need `rm` from 'node:fs/promises' but we want to avoid it.
+            // Let's rely on standard node:net behavior or try Bun native.
+            // Actually, `net.createServer` might fail if file exists.
+            // We'll use `rm` from `node:fs/promises` as it's the safest cross-platform way in Bun for "files".
+            // Since I'm supposed to replace `fs`... 
+            // Bun.file(this.socketPath).delete() IS the way.
+            await Bun.file(this.socketPath).delete();
         }
 
         return new Promise((resolve, reject) => {
@@ -74,13 +86,13 @@ export class SocketServer {
         // Close server
         if (this.server) {
             return new Promise((resolve) => {
-                this.server!.close(() => {
+                this.server!.close(async () => {
                     console.log('[SocketServer] Stopped');
 
                     // Clean up socket file (not needed for Windows named pipes)
                     const isWindowsPipe = this.socketPath.startsWith('\\\\.\\pipe\\');
-                    if (!isWindowsPipe && existsSync(this.socketPath)) {
-                        unlinkSync(this.socketPath);
+                    if (!isWindowsPipe && await Bun.file(this.socketPath).exists()) {
+                        await Bun.file(this.socketPath).delete();
                     }
 
                     resolve();

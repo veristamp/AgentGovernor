@@ -115,7 +115,7 @@ export class Agent {
 
                 // If not search, or search yielded nothing, or loop maxed out:
                 if (manifest) {
-                    this.workflows.saveWorkflow(request.goal, code, manifest, {
+                    await this.workflows.saveWorkflow(request.goal, code, manifest, {
                         id: request.identity.roles.join(','),
                         orgId: request.identity.orgId,
                     });
@@ -209,7 +209,15 @@ export class Agent {
                 return { code: '', attempts: attempt + 1, isSearch: true, searchQuery: searchMatch[1] };
             }
 
-            const code = this.extractCode(raw, goal);
+            // If code extraction fails but it wasn't a search, treating it as an attempt failure
+            let code: string;
+            try {
+                code = this.extractCode(raw, goal);
+            } catch (e) {
+                lastCode = raw;
+                continue;
+            }
+            
             lastCode = code;
 
             const validation = await this.validateCode(code, context);
@@ -250,7 +258,16 @@ export class Agent {
         const allowedSkills = new Set(context.skills.map((skill) => skill.skillRef));
         if (allowedSkills.size) {
             for (const skill of manifest.skills) {
-                if (!allowedSkills.has(skill)) {
+                // Normalize both to check inclusion
+                // Skill might be "docs-to-files", allowed might be "skills:docs-to-files@1"
+                const skillShort = skill.replace(/^skills:/, '').split('@')[0];
+                
+                const isAllowed = Array.from(allowedSkills).some(allowed => {
+                    const allowedShort = allowed.replace(/^skills:/, '').split('@')[0];
+                    return allowed === skill || allowedShort === skillShort;
+                });
+
+                if (!isAllowed) {
                     errors.push(`Skill '${skill}' not allowed by current context`);
                 }
             }

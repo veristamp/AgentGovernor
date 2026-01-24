@@ -1,7 +1,7 @@
 import { ToolRegistry } from '../tool_registry/registry';
 import type { ToolDescriptor } from '../tool_registry/types';
 import type { AgentIdentityScope } from './types';
-import { getRolePermissions, matchesPermission } from '../policy/roles';
+import { getRolePermissionsAsync, matchesPermission } from '../policy/roles';
 
 export interface SearchToolResult {
     tool_references: Array<{
@@ -38,7 +38,12 @@ export class RegistrySearchTool {
         const results = await this.toolRegistry.search(query, 10); // Search broad
         
         // Filter results based on RBAC permissions
-        const allowedResults = results.filter(tool => this.isToolAllowed(tool.qualifiedName, identity));
+        const allowedResults = [];
+        for (const tool of results) {
+            if (await this.isToolAllowed(tool.qualifiedName, identity)) {
+                allowedResults.push(tool);
+            }
+        }
         
         return {
             tool_references: allowedResults.slice(0, 5).map((t: ToolDescriptor) => ({
@@ -48,11 +53,11 @@ export class RegistrySearchTool {
         };
     }
 
-    private isToolAllowed(toolName: string, identity: AgentIdentityScope): boolean {
+    private async isToolAllowed(toolName: string, identity: AgentIdentityScope): Promise<boolean> {
         // Admin bypass
         if (identity.roles?.includes('mcp:admin')) return true;
 
-        const permissions = getRolePermissions(identity.roles ?? []);
+        const permissions = await getRolePermissionsAsync(identity.roles ?? []);
         
         // Check for wildcard or explicit match
         if (matchesPermission(permissions, '*')) return true;

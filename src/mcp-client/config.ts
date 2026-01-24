@@ -15,18 +15,16 @@
  * }
  */
 
-import { readFileSync, existsSync } from 'fs';
 import { resolve as resolvePath } from 'path';
 import type { Config, ServerConfig } from './types';
 
-export function loadConfig(configPath: string = 'mcp_servers.json'): Config {
-    if (!existsSync(configPath)) {
+export async function loadConfig(configPath: string = 'mcp_servers.json'): Promise<Config> {
+    if (!(await Bun.file(configPath).exists())) {
         console.warn(`Config file not found: ${configPath}, using empty config`);
         return { mcpServers: {} };
     }
 
-    const raw = readFileSync(configPath, 'utf-8');
-    const data = JSON.parse(raw);
+    const data = await Bun.file(configPath).json();
 
     // Support both flat format and nested format
     const mcpServers: Record<string, ServerConfig> = {};
@@ -89,7 +87,7 @@ export function defaultServerPrefix(serverKey: string, _serverInfo: unknown): st
 /**
  * Get list of enabled server names from config
  */
-export function getEnabledServers(configPath: string = 'mcp_servers.json'): string[] {
-    const config = loadConfig(configPath);
+export async function getEnabledServers(configPath: string = 'mcp_servers.json'): Promise<string[]> {
+    const config = await loadConfig(configPath);
     return Object.keys(config.mcpServers);
 }

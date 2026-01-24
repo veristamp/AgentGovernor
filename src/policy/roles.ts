@@ -14,61 +14,115 @@
  * - "*" = all skills
  * - "skills:docs-to-files@1" = specific skill version
  */
-import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 
 const ROLE_FILE_PATH = resolve('policy', 'role_permissions.json');
 
 function loadRolePermissionsFromFile(): Record<string, string[]> {
-    if (!existsSync(ROLE_FILE_PATH)) {
-        return {};
-    }
-    const raw = readFileSync(ROLE_FILE_PATH, 'utf-8');
-    const parsed = JSON.parse(raw) as Record<string, string[]>;
-    return parsed;
+    // Bun.file(path).json() is async, but we need sync here for the constant export.
+    // However, top-level await is supported in Bun modules.
+    // But ROLE_PERMISSIONS is exported as a constant.
+    // If we want to use Bun.file, we should make this async or use lazy loading.
+    // Since this is a config file, maybe we can keep sync read if it's just once at startup?
+    // User requested removal of all fs.
+    // We can use `await` in module scope.
+    
+    // BUT: standard pattern for configs is often sync.
+    // Let's refactor ROLE_PERMISSIONS to be a function or promise if strictly no fs.
+    // Or we can use Bun.file().json() with await since this is a module.
+    
+    // Wait, `loadRolePermissionsFromFile` is called inside `ROLE_PERMISSIONS` definition.
+    // If we make it async, `ROLE_PERMISSIONS` becomes a Promise.
+    // That breaks the synchronous exports.
+    // We should probably change `ROLE_PERMISSIONS` to be loaded asynchronously or lazy.
+    
+    // For now, let's keep it sync for simplicity if unavoidable, OR refactor consumer.
+    // Consumer `getRolePermissions` is sync. `checkRoleAccess` is sync.
+    // Changing this to async ripples everywhere.
+    // However, Bun doesn't have a sync file read API that is "native" like Bun.file().
+    // Actually, `Bun.file` is lazy, but `text()` returns a Promise.
+    // So we MUST be async to use Bun.file.
+    
+    // I will refactor `ROLE_PERMISSIONS` to be loaded on demand or cached.
+    return {};
 }
 
-export const ROLE_PERMISSIONS: Record<string, string[]> = {
-    // Admin - full access
-    'mcp:admin': ['*'],
+// Global cache
+let cachedRolePermissions: Record<string, string[]> | null = null;
 
-    // Demo roles for skills-only access
-    'mcp:docs-curator': [
-        'skills:docs-to-files@1',
-    ],
-    'mcp:repo-inspector': [
-        'skills:repo-insight@1',
-    ],
-    ...loadRolePermissionsFromFile(),
-};
-
-
-/**
- * Expand roles to permissions.
- *
- * @param roles - Array of role strings from JWT
- * @returns Array of permission patterns
- */
-export function getRolePermissions(roles: string[]): string[] {
+export async function getRolePermissionsAsync(roles: string[]): Promise<string[]> {
+    if (!cachedRolePermissions) {
+        if (await Bun.file(ROLE_FILE_PATH).exists()) {
+            cachedRolePermissions = await Bun.file(ROLE_FILE_PATH).json();
+        } else {
+            cachedRolePermissions = {};
+        }
+    }
+    
     const permissions = new Set<string>();
+    
+    // Add hardcoded defaults
+    const defaults: Record<string, string[]> = {
+        'mcp:admin': ['*'],
+        'mcp:docs-curator': ['skills:docs-to-files@1'],
+        'mcp:repo-inspector': ['skills:repo-insight@1'],
+    };
 
     for (const role of roles) {
-        const perms = ROLE_PERMISSIONS[role];
-        if (perms) {
-            perms.forEach((p) => permissions.add(p));
+        // Check defaults
+        if (defaults[role]) {
+            defaults[role].forEach(p => permissions.add(p));
+        }
+        // Check file-loaded
+        if (cachedRolePermissions && cachedRolePermissions[role]) {
+            cachedRolePermissions[role].forEach(p => permissions.add(p));
         }
     }
 
     return [...permissions];
 }
 
-/**
- * Check if any permission matches the requested action.
- *
- * @param permissions - Array of permission patterns
- * @param action - The tool action being requested (e.g., "filesystem.read_file")
- * @returns true if any permission matches
- */
+// Synchronous version is deprecated/removed in favor of async to support Bun.file
+// But we need to update consumers.
+// Let's check usages of `getRolePermissions` and `checkRoleAccess`.
+// They are used in `src/agent/skill_catalog.ts` and `src/agent/discovery.ts`.
+// Both are async contexts or can be made async.
+
+export async function checkRoleAccess(
+    roles: string[],
+    action: string
+): Promise<{ allowed: boolean; matchedPermission?: string; reason?: string }> {
+    if (roles.length === 0) {
+        return {
+            allowed: false,
+            reason: 'No roles assigned',
+        };
+    }
+
+    const permissions = await getRolePermissionsAsync(roles);
+
+    if (permissions.length === 0) {
+        return {
+            allowed: false,
+            reason: `Roles ${roles.join(', ')} have no permissions mapped`,
+        };
+    }
+
+    for (const perm of permissions) {
+        if (matchesPattern(perm, action)) {
+            return {
+                allowed: true,
+                matchedPermission: perm,
+            };
+        }
+    }
+
+    return {
+        allowed: false,
+        reason: `Action '${action}' not allowed by roles: ${roles.join(', ')}`,
+    };
+}
+
 export function matchesPermission(permissions: string[], action: string): boolean {
     for (const perm of permissions) {
         if (matchesPattern(perm, action)) {
@@ -78,15 +132,11 @@ export function matchesPermission(permissions: string[], action: string): boolea
     return false;
 }
 
+// Helper export for sync usage where we accept pre-loaded permissions
+export { matchesPermission as matchesPermissionSync }; 
+
 /**
  * Check if a pattern matches an action.
- *
- * Supports:
- * - Exact match: "filesystem.read_file"
- * - Wildcard all: "*"
- * - Prefix wildcard: "filesystem.*"
- * - Suffix wildcard: "*.read_file"
- * - Glob patterns: "*.search*"
  */
 function matchesPattern(pattern: string, action: string): boolean {
     // Exact match
@@ -118,44 +168,3 @@ function matchesPattern(pattern: string, action: string): boolean {
     return false;
 }
 
-/**
- * Check if an identity with given roles can perform an action.
- *
- * @param roles - Roles from JWT
- * @param action - Tool action being requested
- * @returns { allowed: boolean, matchedPermission?: string, reason?: string }
- */
-export function checkRoleAccess(
-    roles: string[],
-    action: string
-): { allowed: boolean; matchedPermission?: string; reason?: string } {
-    if (roles.length === 0) {
-        return {
-            allowed: false,
-            reason: 'No roles assigned',
-        };
-    }
-
-    const permissions = getRolePermissions(roles);
-
-    if (permissions.length === 0) {
-        return {
-            allowed: false,
-            reason: `Roles ${roles.join(', ')} have no permissions mapped`,
-        };
-    }
-
-    for (const perm of permissions) {
-        if (matchesPattern(perm, action)) {
-            return {
-                allowed: true,
-                matchedPermission: perm,
-            };
-        }
-    }
-
-    return {
-        allowed: false,
-        reason: `Action '${action}' not allowed by roles: ${roles.join(', ')}`,
-    };
-}

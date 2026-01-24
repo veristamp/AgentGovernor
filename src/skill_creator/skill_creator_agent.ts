@@ -1,6 +1,5 @@
-import { mkdir, writeFile, readFile } from 'fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'path';
-import { existsSync } from 'fs';
 
 import { LlmClient } from '../agent/llm_client';
 import { retrieveRelevantTools, expandTools, loadTools } from './tool_retriever';
@@ -250,12 +249,10 @@ export class SkillCreatorAgent {
         const skillPath = join(skillsDir, draft.skillId);
 
         // 1. Create directory
-        if (!existsSync(skillPath)) {
-            await mkdir(skillPath, { recursive: true });
-        }
+        await mkdir(skillPath, { recursive: true });
 
         // 2. Write files
-        await writeFile(join(skillPath, 'manifest.json'), JSON.stringify({
+        await Bun.write(join(skillPath, 'manifest.json'), JSON.stringify({
             skillId: draft.skillId,
             version: draft.version,
             description: draft.summary,
@@ -264,9 +261,9 @@ export class SkillCreatorAgent {
             fanoutTools: draft.fanoutTools
         }, null, 2));
 
-        await writeFile(join(skillPath, 'SKILL.md'), `# ${draft.skillId}\n\n${draft.summary}\n\n## Interface\n\n\`\`\`python\n${draft.interfaces.join('\n')}\n\`\`\`\n`);
+        await Bun.write(join(skillPath, 'SKILL.md'), `# ${draft.skillId}\n\n${draft.summary}\n\n## Interface\n\n\`\`\`python\n${draft.interfaces.join('\n')}\n\`\`\`\n`);
         
-        await writeFile(join(skillPath, 'lib.py'), draft.code);
+        await Bun.write(join(skillPath, 'lib.py'), draft.code);
 
         // 3. Update RBAC
         const rolePermissionsPath = this.options.rolePermissionsPath || resolve('policy', 'role_permissions.json');
@@ -296,8 +293,8 @@ export class SkillCreatorAgent {
 
     private async updateRbac(path: string, roles: string[], skillId: string, version: number) {
         let rbac: Record<string, string[]> = {};
-        if (existsSync(path)) {
-            const content = await readFile(path, 'utf-8');
+        if (await Bun.file(path).exists()) {
+            const content = await Bun.file(path).text();
             rbac = JSON.parse(content);
         }
 
@@ -315,7 +312,7 @@ export class SkillCreatorAgent {
         }
 
         if (updated) {
-            await writeFile(path, JSON.stringify(rbac, null, 2));
+            await Bun.write(path, JSON.stringify(rbac, null, 2));
         }
     }
 }
