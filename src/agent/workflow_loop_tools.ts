@@ -1,4 +1,4 @@
-import type { AgentLoopTool, AgentLoopToolContext } from "../agent_loop/types";
+import type { AgentLoopTool, AgentLoopToolContext } from "../runtime/types";
 import type { WorkflowRegistry } from "../workflow_registry";
 import type { SkillCatalog } from "./skill_catalog";
 import type {

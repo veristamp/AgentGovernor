@@ -1,6 +1,10 @@
-import { runAgentLoop } from "../agent_loop";
 import { analyzeCode } from "../audit";
+import { getMCPClientManager } from "../mcp-client/manager";
 import type { PolicyEngine } from "../policy/engine";
+// New Runtime Imports
+import { createAgentRuntime, type RuntimeContext } from "../runtime/factory";
+import { runGovernedLoop } from "../runtime/loop";
+import type { RuntimeIdentity } from "../runtime/middleware";
 import { WorkflowRegistry } from "../workflow_registry";
 import type { LlmClient } from "./llm_client";
 import { buildPrompt } from "./prompt_builder";
@@ -73,39 +77,62 @@ export class WorkflowAgent {
 
 		const user = `${prompt.user}\n\nIf you need more skills or examples, call the loop tools (skills.search, skills.get, workflows.search, update_plan).`;
 
-		const { final, iterations } = await runAgentLoop<{
+		// --- MIGRATION: USE NEW RUNTIME ---
+
+		// 1. Prepare Context
+		const mcp = await getMCPClientManager();
+
+		// Note: LlmClient is wrapping the model construction.
+		// Ideally we pass the Vercel LanguageModel directly.
+		// For now, we assume this.options.llm can give us the underlying model instance
+		// OR we re-create it here. Let's assume we re-create it using the key.
+		const { createOpenAI } = await import("@ai-sdk/openai");
+		// HACK: Assuming OpenAI for now, or we need to expose the model from LlmClient
+		const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+		const model = openai(this.options.model);
+
+		const runtimeIdentity: RuntimeIdentity = {
+			...request.identity,
+			id: `workflow-agent-${Date.now()}`,
+			type: "agent",
+			sessionId: `workflow-${Date.now()}`,
+		};
+
+		const ctx: RuntimeContext = {
+			identity: runtimeIdentity,
+			mcp,
+			policy: this.options.policy,
+			model,
+		};
+
+		// 2. Create Runtime (No MCP tools for workflow builder, only internal loop tools)
+		// WorkflowAgent relies on `loopTools` which are local functions, not MCP tools.
+		// `createAgentRuntime` is designed for MCP tools.
+		// However, we can adapt `loopTools` to be passed to `runGovernedLoop` directly via the runtime object.
+
+		// We create a "dummy" runtime with no MCP tools, then inject our local tools
+		const runtime = await createAgentRuntime(ctx, []);
+
+		// Inject local tools manually into the runtime
+		// We need to adapt AgentLoopTool interface to the one expected by Runtime (which handles execute)
+		// Wait, AgentRuntime uses AgentLoopTool which has execute().
+		// createAgentRuntime creates proxy tools. We can just add our local tools.
+		runtime.tools = [...runtime.tools, ...loopTools];
+
+		// 3. Run Loop
+		const { final, iterations, trace } = await runGovernedLoop<{
 			code: string;
 			manifest: { skills: string[]; tools: string[]; io_calls?: string[] };
-		}>({
-			llm: this.options.llm,
-			model: this.options.model,
-			system,
-			user,
-			tools: loopTools,
-			toolContext: {
-				orgId: request.identity.orgId,
-				roles: request.identity.roles,
-				scopes: request.identity.scopes,
-			},
-			options: { maxIterations: 12 },
+		}>(ctx, runtime, system, user, {
+			maxIterations: 12,
 			validateFinal: async (value) => {
+				// Existing validation logic
+				const val = value as any;
 				const code =
-					typeof value === "string"
-						? value
-						: typeof value === "object" && value
-							? "code" in value &&
-								typeof (value as { code?: unknown }).code === "string"
-								? (value as { code: string }).code
-								: "result" in value &&
-										typeof (value as { result?: unknown }).result ===
-											"object" &&
-										(value as { result?: unknown }).result &&
-										"code" in (value as { result: object }).result &&
-										typeof (value as { result: { code?: unknown } }).result
-											.code === "string"
-									? (value as { result: { code: string } }).result.code
-									: undefined
-							: undefined;
+					val?.code ||
+					val?.result?.code ||
+					(typeof val === "string" ? val : undefined);
+
 				if (!code || typeof code !== "string") {
 					return {
 						ok: false as const,

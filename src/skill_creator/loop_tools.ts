@@ -1,6 +1,6 @@
 import type { AgentIdentityScope } from "../agent/types";
-import type { AgentLoopTool, AgentLoopToolContext } from "../agent_loop/types";
 import { getRolePermissionsAsync, matchesPermission } from "../policy/roles";
+import type { AgentLoopTool, AgentLoopToolContext } from "../runtime/types";
 import type { SkillRegistry, SkillSummary } from "../skills_registry/registry";
 import type { ToolRegistry } from "../tool_registry/registry";
 import type { ToolDescriptor } from "../tool_registry/types";

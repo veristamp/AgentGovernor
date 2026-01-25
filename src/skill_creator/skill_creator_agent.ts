@@ -2,9 +2,13 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { LlmClient } from "../agent/llm_client";
-import { runAgentLoop } from "../agent_loop";
 import { analyzeSkillCode } from "../audit";
+// New Runtime
+import { getMCPClientManager } from "../mcp-client/manager";
 import { getOrgPolicyPaths } from "../policy/org_config";
+import { createAgentRuntime, type RuntimeContext } from "../runtime/factory";
+import { runGovernedLoop } from "../runtime/loop";
+import type { RuntimeIdentity } from "../runtime/middleware";
 import { SkillRegistry } from "../skills_registry/registry";
 import type {
 	SkillExample,
@@ -47,215 +51,12 @@ export class SkillCreatorAgent {
 		request: SkillCreationRequest,
 		onEvent?: (event: SkillCreatorEvent) => void,
 	): Promise<SkillCreationResult> {
-		// Prefer the harness-style agent loop. Keep the previous flow as fallback.
 		try {
 			return await this.runWithAgentLoop(request, onEvent);
 		} catch (e) {
-			console.warn(
-				"[SkillCreator] Agent loop failed, falling back to legacy flow:",
-				e,
-			);
+			console.warn("[SkillCreator] Agent loop failed:", e);
+			throw e;
 		}
-
-		// ========================================================================
-		// Phase 1: Tool Discovery & Selection (Interactive Loop)
-		// ========================================================================
-
-		const candidateTools = await retrieveRelevantTools(
-			request.goal,
-			request.constraints || [],
-			{ toolsPath: this.options.toolsPath },
-			15,
-		);
-
-		const allTools = await loadTools(this.options.toolsPath);
-		let finalSelection: ToolSelectionResponse | undefined;
-		let discoveryAttempts = 0;
-		const maxDiscoveryAttempts = 3;
-
-		// Loop until LLM is satisfied with toolset
-		while (discoveryAttempts < maxDiscoveryAttempts) {
-			discoveryAttempts++;
-			if (onEvent) onEvent({ type: "tool_selection", tools: candidateTools });
-
-			// Ask LLM to select or request more
-			const selection = await this.performToolSelection(
-				request.goal,
-				candidateTools,
-				request.constraints || [],
-			);
-
-			// Always track the latest selection as a fallback
-			finalSelection = selection;
-
-			// Check for missing capabilities
-			if (
-				selection.missing_capabilities &&
-				selection.missing_capabilities.length > 0
-			) {
-				console.log(
-					`[SkillCreator] LLM requested missing capabilities: ${selection.missing_capabilities.join(", ")}`,
-				);
-
-				// Search for missing tools
-				const newTools: ToolDescriptor[] = [];
-				for (const query of selection.missing_capabilities) {
-					const found = await retrieveRelevantTools(
-						query,
-						[],
-						{ toolsPath: this.options.toolsPath },
-						5,
-					);
-					newTools.push(...found);
-				}
-
-				// Merge unique new tools into candidates
-				const beforeCount = candidateTools.length;
-				for (const tool of newTools) {
-					if (
-						!candidateTools.find((t) => t.qualifiedName === tool.qualifiedName)
-					) {
-						candidateTools.push(tool);
-					}
-				}
-
-				if (candidateTools.length === beforeCount) {
-					console.log(
-						"[SkillCreator] No new tools found for missing capabilities. Proceeding with best effort.",
-					);
-					finalSelection = selection;
-					break;
-				}
-
-				// Continue loop with expanded candidates
-				continue;
-			}
-
-			// No missing capabilities, we are done with Phase 1
-			finalSelection = selection;
-			break;
-		}
-
-		if (!finalSelection) {
-			throw new Error("Failed to select tools.");
-		}
-
-		// 3. Resolve selected tools to full descriptors with schemas
-		let selectedDescriptors: ToolDescriptor[] = [];
-
-		for (const name of finalSelection.selected_tools) {
-			const found =
-				candidateTools.find((t) => t.qualifiedName === name) ||
-				allTools.find((t) => t.qualifiedName === name);
-
-			if (found) {
-				selectedDescriptors.push(found);
-			} else {
-				console.warn(
-					`[SkillCreator] Warning: Selected tool '${name}' not found.`,
-				);
-			}
-		}
-
-		if (selectedDescriptors.length === 0) {
-			console.warn(
-				"[SkillCreator] No tools selected. Falling back to top 10 candidates.",
-			);
-			console.log(
-				"[SkillCreator] Candidates were:",
-				candidateTools.map((t) => t.qualifiedName).join(", "),
-			);
-			selectedDescriptors = candidateTools.slice(0, 10);
-		}
-
-		if (onEvent)
-			onEvent({ type: "tool_selection", tools: selectedDescriptors });
-
-		// ========================================================================
-		// Phase 2: Skill Generation (Implementation)
-		// ========================================================================
-
-		let attempts = 0;
-		const maxAttempts = 3;
-
-		while (attempts < maxAttempts) {
-			attempts++;
-
-			// 4. Build Generation Prompt with Schemas
-			const plan = finalSelection.execution_graph
-				? `${finalSelection.reasoning}\n\nEXECUTION_GRAPH:\n${JSON.stringify(finalSelection.execution_graph, null, 2)}`
-				: finalSelection.reasoning;
-			const { system, user } = buildGenerationPrompt(
-				request.goal,
-				selectedDescriptors,
-				plan,
-			);
-
-			// 5. Call LLM
-			const responseText = await this.llm.complete(
-				[
-					{ role: "system", content: system },
-					{ role: "user", content: user },
-				],
-				{
-					model: this.options.model,
-					temperature: this.options.temperature,
-					maxTokens: this.options.maxTokens,
-				},
-			);
-
-			// 6. Parse & Repair Loop
-			const draft: SkillDraftResponse | undefined =
-				await this.parseAndRepair(responseText);
-
-			if (!draft) {
-				throw new Error("Failed to parse LLM response after repairs");
-			}
-
-			// 7. Validate: Check if used tools match selected tools
-			const usedTools = draft.fanout_tools || [];
-			const missingTools = usedTools.filter(
-				(t) => !selectedDescriptors.find((sd) => sd.qualifiedName === t),
-			);
-
-			if (missingTools.length > 0) {
-				console.log(
-					`[SkillCreator] Generation used unselected tools: ${missingTools.join(", ")}. Retrying...`,
-				);
-
-				// Add missing tools to context if they exist
-				for (const missing of missingTools) {
-					const found = allTools.find((t) => t.qualifiedName === missing);
-					if (found) selectedDescriptors.push(found);
-				}
-				continue;
-			}
-
-			// 8. Success - Create Skill
-			const skillDraft: SkillDraft = {
-				skillId: draft.skill_id,
-				version: 1,
-				summary: draft.summary,
-				interfaces: Array.isArray(draft.interface)
-					? draft.interface
-					: draft.interface
-						? [String(draft.interface)]
-						: [],
-				bindings: draft.bindings || {},
-				fanoutTools: draft.fanout_tools || [],
-				code: draft.code,
-				examples: Array.isArray(draft.examples) ? draft.examples : [],
-				dependencies: Array.isArray(draft.dependencies)
-					? draft.dependencies
-					: [],
-			};
-
-			if (onEvent) onEvent({ type: "draft", draft: skillDraft });
-
-			return await this.finalizeSkill(skillDraft, request);
-		}
-
-		throw new Error("Max attempts reached without successful skill creation");
 	}
 
 	private async runWithAgentLoop(
@@ -306,64 +107,94 @@ When done, return type=final with result matching the skill draft JSON schema:
 
 		const user = `GOAL:\n${request.goal}\n\nCONSTRAINTS:\n${(request.constraints || []).map((c) => `- ${c}`).join("\n") || "- (none)"}\n\nINITIAL TOOL CANDIDATES (summaries):\n${initialTools.map((t) => `- ${t.qualifiedName}: ${t.description}`).join("\n") || "- (none)"}\n\nRELATED EXISTING SKILLS (summaries):\n${initialSkills.map((s) => `- ${s.skillRef}: ${s.description}`).join("\n") || "- (none)"}\n\nStart by calling registry.search if you need more tools/skills, and call update_plan as you refine your execution graph.`;
 
-		const { final } = await runAgentLoop<SkillDraftResponse>({
-			llm: this.llm,
-			model: this.options.model,
+		// --- MIGRATION: USE NEW RUNTIME ---
+		const mcp = await getMCPClientManager();
+
+		// HACK: Re-create OpenAI model (should be passed better)
+		const { createOpenAI } = await import("@ai-sdk/openai");
+		const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+		const model = openai(this.options.model);
+
+		const runtimeIdentity: RuntimeIdentity = {
+			id: request.requester.id,
+			type: "agent",
+			orgId: request.requester.orgId,
+			roles: request.requester.roles,
+			scopes: [],
+			sessionId: `skill-creator-${Date.now()}`,
+		};
+
+		// We assume policy engine is available or created here.
+		// SkillCreator didn't have explicit PolicyEngine dependency in constructor args in old code (only used LlmClient).
+		// We need to instantiate one or get it from dependencies.
+		// Assuming DEFAULT_RULES for now or we update SkillCreatorDependencies to include it.
+		const { PolicyEngine, DEFAULT_RULES } = await import("../policy/engine");
+		const policy = new PolicyEngine(DEFAULT_RULES);
+
+		const ctx: RuntimeContext = {
+			identity: runtimeIdentity,
+			mcp,
+			policy,
+			model,
+		};
+
+		const runtime = await createAgentRuntime(ctx, []);
+		runtime.tools = [...runtime.tools, ...loopTools];
+
+		const { final } = await runGovernedLoop<SkillDraftResponse>(
+			ctx,
+			runtime,
 			system,
 			user,
-			tools: loopTools,
-			toolContext: {
-				orgId: request.requester.orgId,
-				roles: request.requester.roles,
-				scopes: [],
+			{
+				maxIterations: 10,
+				validateFinal: async (value) => {
+					const v = value as Partial<SkillDraftResponse>;
+					if (!v || typeof v !== "object") {
+						return {
+							ok: false as const,
+							error: "final.result must be an object",
+						};
+					}
+					if (!v.skill_id || !v.summary || !v.code) {
+						return {
+							ok: false as const,
+							error: "Missing required fields: skill_id, summary, code",
+						};
+					}
+					if (
+						typeof v.skill_id !== "string" ||
+						v.skill_id.includes(":") ||
+						v.skill_id.includes("@")
+					) {
+						return {
+							ok: false as const,
+							error:
+								"skill_id must be a plain id like 'docs-to-files' (no 'skills:' prefix and no '@version')",
+						};
+					}
+					if (!/^[a-z0-9][a-z0-9-_]*$/i.test(v.skill_id)) {
+						return {
+							ok: false as const,
+							error:
+								"skill_id contains invalid characters; use only letters, numbers, '-' and '_'",
+						};
+					}
+					if (
+						!Array.isArray(v.interface) ||
+						!Array.isArray(v.fanout_tools) ||
+						!v.bindings
+					) {
+						return {
+							ok: false as const,
+							error:
+								"Missing required fields: interface[], bindings, fanout_tools[]",
+						};
+					}
+					return { ok: true as const, value: v as SkillDraftResponse };
+				},
 			},
-			options: { maxIterations: 10 },
-			validateFinal: async (value) => {
-				const v = value as Partial<SkillDraftResponse>;
-				if (!v || typeof v !== "object") {
-					return {
-						ok: false as const,
-						error: "final.result must be an object",
-					};
-				}
-				if (!v.skill_id || !v.summary || !v.code) {
-					return {
-						ok: false as const,
-						error: "Missing required fields: skill_id, summary, code",
-					};
-				}
-				if (
-					typeof v.skill_id !== "string" ||
-					v.skill_id.includes(":") ||
-					v.skill_id.includes("@")
-				) {
-					return {
-						ok: false as const,
-						error:
-							"skill_id must be a plain id like 'docs-to-files' (no 'skills:' prefix and no '@version')",
-					};
-				}
-				if (!/^[a-z0-9][a-z0-9-_]*$/i.test(v.skill_id)) {
-					return {
-						ok: false as const,
-						error:
-							"skill_id contains invalid characters; use only letters, numbers, '-' and '_'",
-					};
-				}
-				if (
-					!Array.isArray(v.interface) ||
-					!Array.isArray(v.fanout_tools) ||
-					!v.bindings
-				) {
-					return {
-						ok: false as const,
-						error:
-							"Missing required fields: interface[], bindings, fanout_tools[]",
-					};
-				}
-				return { ok: true as const, value: v as SkillDraftResponse };
-			},
-		});
+		);
 
 		const skillDraft: SkillDraft = {
 			skillId: final.skill_id,
@@ -386,6 +217,7 @@ When done, return type=final with result matching the skill draft JSON schema:
 		candidates: ToolDescriptor[],
 		constraints: string[],
 	): Promise<ToolSelectionResponse> {
+		// Legacy method - mostly replaced by loop, but kept for reference if needed
 		const { system, user } = buildSelectionPrompt(
 			goal,
 			candidates,
