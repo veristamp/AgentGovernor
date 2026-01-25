@@ -19,7 +19,10 @@ export function decodeJWT(token: string): JWTClaims | null {
 		}
 
 		// Base64URL decode the payload (second part)
-		const payloadB64 = parts[1]!;
+		const payloadB64 = parts[1];
+		if (!payloadB64) {
+			return null;
+		}
 		const padding = 4 - (payloadB64.length % 4);
 		const paddedB64 =
 			padding !== 4 ? payloadB64 + "=".repeat(padding) : payloadB64;
@@ -54,7 +57,10 @@ export function decodeJWTHeader(
 			return null;
 		}
 
-		const headerB64 = parts[0]!;
+		const headerB64 = parts[0];
+		if (!headerB64) {
+			return null;
+		}
 		const padding = 4 - (headerB64.length % 4);
 		const paddedB64 =
 			padding !== 4 ? headerB64 + "=".repeat(padding) : headerB64;

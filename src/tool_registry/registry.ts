@@ -1,9 +1,20 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
-import { readdirSync, readFileSync, statSync } from "fs";
-import { join, resolve } from "path";
 import { db, toTsVector } from "../registry/db";
 import { tools } from "../registry/schema";
 import type { ToolDescriptor, ToolRegistryOptions } from "./types";
+
+function isToolDescriptor(value: unknown): value is ToolDescriptor {
+	if (!value || typeof value !== "object") return false;
+	const v = value as Record<string, unknown>;
+	return (
+		typeof v.qualifiedName === "string" &&
+		typeof v.serverPrefix === "string" &&
+		typeof v.name === "string" &&
+		typeof v.description === "string"
+	);
+}
 
 export class ToolRegistry {
 	private toolsDir: string;
@@ -15,7 +26,7 @@ export class ToolRegistry {
 	public async ingest() {
 		// console.log(`[ToolRegistry] Ingesting tools from: ${this.toolsDir}`);
 		const walk = async (dir: string) => {
-			if (!require("fs").existsSync(dir)) return;
+			if (!require("node:fs").existsSync(dir)) return;
 
 			const files = readdirSync(dir);
 			for (const file of files) {
@@ -26,8 +37,8 @@ export class ToolRegistry {
 				} else if (file.endsWith(".json")) {
 					try {
 						const content = readFileSync(path, "utf-8");
-						const data = JSON.parse(content);
-						if (data.qualifiedName && data.description) {
+						const data = JSON.parse(content) as unknown;
+						if (isToolDescriptor(data)) {
 							await this.upsert(data);
 						}
 					} catch (e) {
@@ -52,7 +63,7 @@ export class ToolRegistry {
 		}
 	}
 
-	private async upsert(tool: any) {
+	private async upsert(tool: ToolDescriptor) {
 		await db
 			.insert(tools)
 			.values({
@@ -62,7 +73,7 @@ export class ToolRegistry {
 				description: tool.description,
 				schema: tool.schema || {},
 				searchVector: toTsVector(
-					tool.qualifiedName + " " + tool.name + " " + tool.description,
+					`${tool.qualifiedName} ${tool.name} ${tool.description}`,
 				),
 			})
 			.onConflictDoUpdate({
@@ -73,7 +84,7 @@ export class ToolRegistry {
 					description: tool.description,
 					schema: tool.schema || {},
 					searchVector: toTsVector(
-						tool.qualifiedName + " " + tool.name + " " + tool.description,
+						`${tool.qualifiedName} ${tool.name} ${tool.description}`,
 					),
 				},
 			});

@@ -5,9 +5,9 @@
  * Calls the Python analyzer and parses the result.
  */
 
-import { spawn } from "child_process";
-import { dirname, resolve as resolvePath } from "path";
-import { fileURLToPath } from "url";
+import { spawn } from "node:child_process";
+import { dirname, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Manifest } from "../policy/types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,7 +45,7 @@ export async function analyzeCode(code: string): Promise<Manifest> {
 			reject(new Error(`Failed to run analyzer: ${err.message}`));
 		});
 
-		child.on("close", (exitCode) => {
+		child.on("close", (_exitCode) => {
 			try {
 				const result = JSON.parse(stdout) as {
 					manifest: {
@@ -87,7 +87,7 @@ export async function analyzeCode(code: string): Promise<Manifest> {
 				};
 
 				resolve(manifest);
-			} catch (e) {
+			} catch (_e) {
 				reject(
 					new Error(`Failed to parse analyzer output: ${stdout}\n${stderr}`),
 				);
@@ -143,7 +143,7 @@ export async function analyzeSkillCode(
 			try {
 				const result = JSON.parse(stdout) as SkillAuditResult;
 				resolve(result);
-			} catch (e) {
+			} catch (_e) {
 				reject(
 					new Error(
 						`Failed to parse skill analyzer output: ${stdout}\n${stderr}`,

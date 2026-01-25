@@ -57,7 +57,7 @@ export class PolicyEngine {
 	 * Check if an action is allowed.
 	 */
 	async check(request: PolicyRequest): Promise<PolicyDecision> {
-		const { identity, action, resource } = request;
+		const { identity, action } = request;
 
 		// 1. Check if identity is revoked
 		if (identity.revoked) {
@@ -252,13 +252,13 @@ export class PolicyEngine {
 		// Handle wildcards like "cortex.*"
 		if (pattern.endsWith(".*")) {
 			const prefix = pattern.slice(0, -2);
-			return value.startsWith(prefix + ".");
+			return value.startsWith(`${prefix}.`);
 		}
 
 		// Handle wildcards like "*.search"
 		if (pattern.startsWith("*.")) {
 			const suffix = pattern.slice(2);
-			return value.endsWith("." + suffix);
+			return value.endsWith(`.${suffix}`);
 		}
 
 		return false;

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync } from "fs";
-import { resolve } from "path";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
 import { LlmClient } from "../src/agent";
 import { PolicyEngine } from "../src/policy";
 import { SkillCreatorAgent } from "../src/skill_creator";
@@ -84,7 +84,10 @@ test("skill creator agent end-to-end", async () => {
 
 	if (USE_REAL_LLM) {
 		console.log("Using Real OpenAI LLM for Skill Creator Test");
-		llmClient = new LlmClient("https://api.openai.com/v1", OPENAI_API_KEY!);
+		if (!OPENAI_API_KEY) {
+			throw new Error("OPENAI_API_KEY is required when USE_REAL_LLM=true");
+		}
+		llmClient = new LlmClient("https://api.openai.com/v1", OPENAI_API_KEY);
 		modelName = "gpt-4o-mini";
 	} else {
 		console.log("Using Fake LLM for Skill Creator Test");

@@ -76,7 +76,7 @@ function buildExamplesSection(context: AgentPromptContext): string {
 		return lines.join("\n");
 	}
 
-	if (selected.examples && selected.examples.length) {
+	if (selected.examples?.length) {
 		const [example] = selected.examples;
 		if (example?.code) {
 			lines.push("```python");

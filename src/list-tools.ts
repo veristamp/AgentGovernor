@@ -183,7 +183,7 @@ const main = async () => {
 		if (!servers.has(serverPrefix)) {
 			servers.set(serverPrefix, []);
 		}
-		servers.get(serverPrefix)!.push(toolData);
+		servers.get(serverPrefix)?.push(toolData);
 		allTools.push(toolData);
 	}
 
@@ -243,10 +243,17 @@ const main = async () => {
 
 	// New: Trigger Ingestion to SQLite
 	console.log("[list-tools] Syncing with Registry Database...");
-	const { getToolRegistry } = await import("./tool_registry/index.js");
-	const registry = getToolRegistry(TOOLS_DIR);
-	// Force re-ingest
-	registry.ingest();
+	try {
+		const { getToolRegistry } = await import("./tool_registry/index.js");
+		const registry = getToolRegistry(TOOLS_DIR);
+		// Best-effort sync (non-fatal if DB is unavailable)
+		await registry.ingest();
+	} catch (err) {
+		console.warn(
+			"[list-tools] Registry sync skipped (DB unavailable or misconfigured):",
+			err instanceof Error ? err.message : String(err),
+		);
+	}
 
 	await manager.close();
 };

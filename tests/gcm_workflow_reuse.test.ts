@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { existsSync, rmSync } from "fs";
-import { resolve } from "path";
+import { existsSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
 import { Agent, LlmClient } from "../src/agent";
 import { PolicyEngine } from "../src/policy";
 import { WorkflowRegistry } from "../src/workflow_registry";

@@ -27,17 +27,6 @@ export interface AgentOptions {
 	workflowRegistry?: WorkflowRegistry;
 }
 
-class AgentValidationError extends Error {
-	constructor(
-		message: string,
-		public code: string,
-		public errors: string[],
-		public attempts: number,
-	) {
-		super(message);
-	}
-}
-
 export class WorkflowAgent {
 	private catalog: SkillCatalog;
 	private workflows: WorkflowRegistry;
@@ -100,8 +89,23 @@ export class WorkflowAgent {
 			},
 			options: { maxIterations: 12 },
 			validateFinal: async (value) => {
-				const v = value as any;
-				const code = typeof v === "string" ? v : v?.code;
+				const code =
+					typeof value === "string"
+						? value
+						: typeof value === "object" && value
+							? "code" in value &&
+								typeof (value as { code?: unknown }).code === "string"
+								? (value as { code: string }).code
+								: "result" in value &&
+										typeof (value as { result?: unknown }).result ===
+											"object" &&
+										(value as { result?: unknown }).result &&
+										"code" in (value as { result: object }).result &&
+										typeof (value as { result: { code?: unknown } }).result
+											.code === "string"
+									? (value as { result: { code: string } }).result.code
+									: undefined
+							: undefined;
 				if (!code || typeof code !== "string") {
 					return {
 						ok: false as const,

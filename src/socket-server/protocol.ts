@@ -81,5 +81,5 @@ export function createError(
 }
 
 export function serializeResponse(response: JsonRpcResponse): string {
-	return JSON.stringify(response) + "\n";
+	return `${JSON.stringify(response)}\n`;
 }

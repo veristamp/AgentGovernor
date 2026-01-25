@@ -2,7 +2,7 @@
 	"FileSystem": {
 		"connection_type": "stdio",
 		"command": "bun",
-		"args": ["run", "filesystem.ts"],
+		"args": ["run", "mcp-servers/agent-filesystem/src/index.ts", "."],
 		"cwd": ".",
 		"timeout": 5.0,
 		"disabled": false

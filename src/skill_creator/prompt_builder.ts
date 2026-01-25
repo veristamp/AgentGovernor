@@ -1,4 +1,4 @@
-import type { SkillCreatorSession, ToolDescriptor } from "./types";
+import type { ToolDescriptor } from "./types";
 
 // ============================================================================
 // Phase 1: Tool Selection (Discovery & Reasoning)

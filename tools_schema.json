@@ -1,26 +1,49 @@
 [
   {
-    "qualifiedName": "filesystem.read-file",
+    "qualifiedName": "filesystem.read-text-file",
     "serverPrefix": "filesystem",
-    "name": "read-file",
-    "originalName": "read-file",
-    "description": "Read the complete contents of a file asynchronously.\n\nArgs:\n    path: Path to the file\n    encoding: \"utf-8\" for text files (default), \"base64\" for binary files (xlsx, images, pdf)\n\nFor binary files like Excel, use encoding=\"base64\" to get base64-encoded content.\nOnly works within allowed directories.",
+    "name": "read-text-file",
+    "originalName": "read_text_file",
+    "description": "Read the complete contents of a file as UTF-8 text. Use head/tail to read only part of the file. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "path": {
-          "type": "string",
-          "description": "Path to the file"
+          "type": "string"
         },
-        "encoding": {
-          "default": "utf-8",
-          "description": "\"utf-8\" for text files (default), \"base64\" for binary files (xlsx, images, pdf)",
+        "head": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "tail": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.read-media-file",
+    "serverPrefix": "filesystem",
+    "name": "read-media-file",
+    "originalName": "read_media_file",
+    "description": "Read an image/audio/binary file and return base64 data with MIME type. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
           "type": "string"
         }
       },
       "required": [
         "path"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -28,8 +51,8 @@
     "qualifiedName": "filesystem.read-multiple-files",
     "serverPrefix": "filesystem",
     "name": "read-multiple-files",
-    "originalName": "read-multiple-files",
-    "description": "Read the contents of multiple files asynchronously.\nReturns each file's content prefixed with its path, separated by '---'.\nContinues on individual file errors. Only works within allowed directories.",
+    "originalName": "read_multiple_files",
+    "description": "Read the contents of multiple text files. Continues on per-file errors. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
@@ -38,12 +61,13 @@
           "items": {
             "type": "string"
           },
-          "description": "Paths to the files"
+          "minItems": 1
         }
       },
       "required": [
         "paths"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -51,81 +75,40 @@
     "qualifiedName": "filesystem.write-file",
     "serverPrefix": "filesystem",
     "name": "write-file",
-    "originalName": "write-file",
-    "description": "Create or overwrite a file with new content asynchronously.\n\nArgs:\n    path: Path to the file\n    content: Content to write (string or base64-encoded for binary)\n    encoding: \"utf-8\" for text files (default), \"base64\" for binary files\n\nFor binary files, pass base64-encoded content and set encoding=\"base64\".\nOverwrites existing files without warning. Only works within allowed directories.",
+    "originalName": "write_file",
+    "description": "Create or overwrite a file. Supports utf-8 text or base64 content. Atomic write. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "path": {
-          "type": "string",
-          "description": "Path to the file"
-        },
-        "content": {
-          "type": "string",
-          "description": "Content to write (string or base64-encoded for binary)"
-        },
-        "encoding": {
-          "default": "utf-8",
-          "description": "\"utf-8\" for text files (default), \"base64\" for binary files",
           "type": "string"
         },
+        "content": {
+          "type": "string"
+        },
+        "encoding": {
+          "type": "string",
+          "enum": [
+            "utf-8",
+            "base64"
+          ],
+          "default": "utf-8"
+        },
         "max_bytes": {
-          "default": 2000000,
-          "description": "Maximum bytes to write",
-          "type": "number"
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 2000000
+        },
+        "overwrite": {
+          "type": "boolean",
+          "default": true
         }
       },
       "required": [
         "path",
         "content"
       ],
-      "$schema": "http://json-schema.org/draft-07/schema#"
-    }
-  },
-  {
-    "qualifiedName": "filesystem.edit-file",
-    "serverPrefix": "filesystem",
-    "name": "edit-file",
-    "originalName": "edit-file",
-    "description": "Make line-based edits to a text file with flexible matching.\nReturns a git-style diff and a UI preview.",
-    "schema": {
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string",
-          "description": "Path to the file"
-        },
-        "edits": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "oldText": {
-                "type": "string",
-                "description": "Text to replace"
-              },
-              "newText": {
-                "type": "string",
-                "description": "New text"
-              }
-            },
-            "required": [
-              "oldText",
-              "newText"
-            ]
-          },
-          "description": "List of edit operations"
-        },
-        "dry_run": {
-          "default": true,
-          "description": "Whether to perform a dry run",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "path",
-        "edits"
-      ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -133,19 +116,19 @@
     "qualifiedName": "filesystem.create-directory",
     "serverPrefix": "filesystem",
     "name": "create-directory",
-    "originalName": "create-directory",
-    "description": "Create a new directory or ensure it exists.\nCreates nested directories if needed. Only works within allowed directories.",
+    "originalName": "create_directory",
+    "description": "Create a directory (recursively). Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "path": {
-          "type": "string",
-          "description": "Path to the directory"
+          "type": "string"
         }
       },
       "required": [
         "path"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -153,39 +136,47 @@
     "qualifiedName": "filesystem.list-directory",
     "serverPrefix": "filesystem",
     "name": "list-directory",
-    "originalName": "list-directory",
-    "description": "Get a detailed listing of directory contents.\nPrefixes entries with [DIR] or [FILE]. Only works within allowed directories.",
+    "originalName": "list_directory",
+    "description": "List directory entries. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "path": {
-          "type": "string",
-          "description": "Path to the directory"
+          "type": "string"
         }
       },
       "required": [
         "path"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
-    "qualifiedName": "filesystem.view-directory-ui",
+    "qualifiedName": "filesystem.list-directory-with-sizes",
     "serverPrefix": "filesystem",
-    "name": "view-directory-ui",
-    "originalName": "view-directory-ui",
-    "description": "Renders an interactive UI to display the contents of a directory.",
+    "name": "list-directory-with-sizes",
+    "originalName": "list_directory_with_sizes",
+    "description": "List directory entries with sizes and summary. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "path": {
+          "type": "string"
+        },
+        "sortBy": {
           "type": "string",
-          "description": "Path to the directory"
+          "enum": [
+            "name",
+            "size"
+          ],
+          "default": "name"
         }
       },
       "required": [
         "path"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -193,29 +184,36 @@
     "qualifiedName": "filesystem.directory-tree",
     "serverPrefix": "filesystem",
     "name": "directory-tree",
-    "originalName": "directory-tree",
-    "description": "Get a recursive tree view of files and directories as JSON.\nIncludes 'name' and 'type', with 'children' for directories. Only works within allowed directories.",
+    "originalName": "directory_tree",
+    "description": "Recursive directory tree as JSON. Supports excludePatterns globs, max_depth, max_nodes. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "path": {
-          "type": "string",
-          "description": "Path to the directory"
+          "type": "string"
+        },
+        "excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
         },
         "max_depth": {
-          "default": 5,
-          "description": "Maximum depth of the tree",
-          "type": "number"
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 5
         },
         "max_nodes": {
-          "default": 5000,
-          "description": "Maximum number of nodes in the tree",
-          "type": "number"
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 5000
         }
       },
       "required": [
         "path"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -223,24 +221,23 @@
     "qualifiedName": "filesystem.move-file",
     "serverPrefix": "filesystem",
     "name": "move-file",
-    "originalName": "move-file",
-    "description": "Move or rename files and directories.\nFails if destination exists. Only works within allowed directories.",
+    "originalName": "move_file",
+    "description": "Move/rename a file or directory. Fails if destination exists. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "source": {
-          "type": "string",
-          "description": "Source path"
+          "type": "string"
         },
         "destination": {
-          "type": "string",
-          "description": "Destination path"
+          "type": "string"
         }
       },
       "required": [
         "source",
         "destination"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -248,32 +245,35 @@
     "qualifiedName": "filesystem.search-files",
     "serverPrefix": "filesystem",
     "name": "search-files",
-    "originalName": "search-files",
-    "description": "Recursively search for files matching a pattern.\nCase-insensitive, returns full paths. Only works within allowed directories.",
+    "originalName": "search_files",
+    "description": "Recursively search for paths matching a glob pattern, relative to the search root. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "path": {
-          "type": "string",
-          "description": "Path to search in"
+          "type": "string"
         },
         "pattern": {
-          "type": "string",
-          "description": "Search pattern"
+          "type": "string"
         },
-        "exclude_patterns": {
-          "default": [],
-          "description": "Patterns to exclude",
+        "excludePatterns": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "default": []
+        },
+        "limit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 5000
         }
       },
       "required": [
         "path",
         "pattern"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -281,19 +281,19 @@
     "qualifiedName": "filesystem.get-file-info",
     "serverPrefix": "filesystem",
     "name": "get-file-info",
-    "originalName": "get-file-info",
-    "description": "Retrieve detailed metadata about a file or directory.\nIncludes size, timestamps, and permissions. Only works within allowed directories.",
+    "originalName": "get_file_info",
+    "description": "Get file/directory metadata. Only works within allowed directories.",
     "schema": {
       "type": "object",
       "properties": {
         "path": {
-          "type": "string",
-          "description": "Path to the file"
+          "type": "string"
         }
       },
       "required": [
         "path"
       ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -301,33 +301,211 @@
     "qualifiedName": "filesystem.list-allowed-directories",
     "serverPrefix": "filesystem",
     "name": "list-allowed-directories",
-    "originalName": "list-allowed-directories",
-    "description": "Returns the list of directories this server can access.",
+    "originalName": "list_allowed_directories",
+    "description": "Show current allowed directories.",
     "schema": {
       "type": "object",
-      "properties": {}
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
-    "qualifiedName": "filesystem.set-allowed-directories",
+    "qualifiedName": "filesystem.edit-file",
     "serverPrefix": "filesystem",
-    "name": "set-allowed-directories",
-    "originalName": "set-allowed-directories",
-    "description": "Update the list of allowed directories at runtime.",
+    "name": "edit-file",
+    "originalName": "edit_file",
+    "description": "Structured replace edits for text files. Returns a unified diff. Use dry_run=true first.",
     "schema": {
       "type": "object",
       "properties": {
-        "directories": {
+        "path": {
+          "type": "string"
+        },
+        "edits": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "object",
+            "properties": {
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "oldText",
+              "newText"
+            ],
+            "additionalProperties": false
           },
-          "description": "List of directories"
+          "minItems": 1
+        },
+        "dry_run": {
+          "type": "boolean",
+          "default": true
+        },
+        "require_all": {
+          "type": "boolean",
+          "default": true
         }
       },
       "required": [
-        "directories"
+        "path",
+        "edits"
       ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.patch-span",
+    "serverPrefix": "filesystem",
+    "name": "patch-span",
+    "originalName": "patch_span",
+    "description": "Replace a 0-based character span [start:end] with new content. Optional sha256 guard on selected slice. Use dry_run=true first.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "new_content": {
+          "type": "string"
+        },
+        "expected_sha256": {
+          "type": "string"
+        },
+        "allow_drift": {
+          "type": "boolean",
+          "default": false
+        },
+        "dry_run": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "path",
+        "start",
+        "end",
+        "new_content"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.patch-lines",
+    "serverPrefix": "filesystem",
+    "name": "patch-lines",
+    "originalName": "patch_lines",
+    "description": "Replace a 1-based inclusive line range with new content. Optional sha256 guard on selected slice. Use dry_run=true first.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "start_line": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "end_line": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "new_content": {
+          "type": "string"
+        },
+        "expected_sha256": {
+          "type": "string"
+        },
+        "allow_drift": {
+          "type": "boolean",
+          "default": false
+        },
+        "dry_run": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "path",
+        "start_line",
+        "end_line",
+        "new_content"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.stitch-file",
+    "serverPrefix": "filesystem",
+    "name": "stitch-file",
+    "originalName": "stitch_file",
+    "description": "Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Use dry_run=true first.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "grafts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "comment": {
+                "type": "string"
+              },
+              "glue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "start",
+              "end"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "output_path": {
+          "type": "string"
+        },
+        "overwrite": {
+          "type": "boolean",
+          "default": false
+        },
+        "dry_run": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "grafts",
+        "output_path"
+      ],
+      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -650,58 +828,6 @@
     }
   },
   {
-    "qualifiedName": "context7.resolve-library-id",
-    "serverPrefix": "context7",
-    "name": "resolve-library-id",
-    "originalName": "resolve-library-id",
-    "description": "Resolves a package/product name to a Context7-compatible library ID and returns matching libraries.\n\nYou MUST call this function before 'query-docs' to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n- Name similarity to the query (exact matches prioritized)\n- Description relevance to the query's intent\n- Documentation coverage (prioritize libraries with higher Code Snippet counts)\n- Source reputation (consider libraries with High or Medium reputation more authoritative)\n- Benchmark Score: Quality indicator (100 is the highest score)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.\n\nIMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best result you have.",
-    "schema": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string",
-          "description": "The user's original question or task. This is used to rank library results by relevance to what the user is trying to accomplish. IMPORTANT: Do not include any sensitive or confidential information such as API keys, passwords, credentials, or personal data in your query."
-        },
-        "libraryName": {
-          "type": "string",
-          "description": "Library name to search for and retrieve a Context7-compatible library ID."
-        }
-      },
-      "required": [
-        "query",
-        "libraryName"
-      ],
-      "additionalProperties": false,
-      "$schema": "http://json-schema.org/draft-07/schema#"
-    }
-  },
-  {
-    "qualifiedName": "context7.query-docs",
-    "serverPrefix": "context7",
-    "name": "query-docs",
-    "originalName": "query-docs",
-    "description": "Retrieves and queries up-to-date documentation and code examples from Context7 for any programming library or framework.\n\nYou must call 'resolve-library-id' first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nIMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best information you have.",
-    "schema": {
-      "type": "object",
-      "properties": {
-        "libraryId": {
-          "type": "string",
-          "description": "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'."
-        },
-        "query": {
-          "type": "string",
-          "description": "The question or task you need help with. Be specific and include relevant details. Good: 'How to set up authentication with JWT in Express.js' or 'React useEffect cleanup function examples'. Bad: 'auth' or 'hooks'. IMPORTANT: Do not include any sensitive or confidential information such as API keys, passwords, credentials, or personal data in your query."
-        }
-      },
-      "required": [
-        "libraryId",
-        "query"
-      ],
-      "additionalProperties": false,
-      "$schema": "http://json-schema.org/draft-07/schema#"
-    }
-  },
-  {
     "qualifiedName": "modelcontextprotocol-python-sdk.get-code",
     "serverPrefix": "modelcontextprotocol-python-sdk",
     "name": "get-code",
@@ -836,6 +962,58 @@
       },
       "required": [
         "name"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "context7.resolve-library-id",
+    "serverPrefix": "context7",
+    "name": "resolve-library-id",
+    "originalName": "resolve-library-id",
+    "description": "Resolves a package/product name to a Context7-compatible library ID and returns matching libraries.\n\nYou MUST call this function before 'query-docs' to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n- Name similarity to the query (exact matches prioritized)\n- Description relevance to the query's intent\n- Documentation coverage (prioritize libraries with higher Code Snippet counts)\n- Source reputation (consider libraries with High or Medium reputation more authoritative)\n- Benchmark Score: Quality indicator (100 is the highest score)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.\n\nIMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best result you have.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The user's original question or task. This is used to rank library results by relevance to what the user is trying to accomplish. IMPORTANT: Do not include any sensitive or confidential information such as API keys, passwords, credentials, or personal data in your query."
+        },
+        "libraryName": {
+          "type": "string",
+          "description": "Library name to search for and retrieve a Context7-compatible library ID."
+        }
+      },
+      "required": [
+        "query",
+        "libraryName"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "context7.query-docs",
+    "serverPrefix": "context7",
+    "name": "query-docs",
+    "originalName": "query-docs",
+    "description": "Retrieves and queries up-to-date documentation and code examples from Context7 for any programming library or framework.\n\nYou must call 'resolve-library-id' first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nIMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best information you have.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "libraryId": {
+          "type": "string",
+          "description": "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'."
+        },
+        "query": {
+          "type": "string",
+          "description": "The question or task you need help with. Be specific and include relevant details. Good: 'How to set up authentication with JWT in Express.js' or 'React useEffect cleanup function examples'. Bad: 'auth' or 'hooks'. IMPORTANT: Do not include any sensitive or confidential information such as API keys, passwords, credentials, or personal data in your query."
+        }
+      },
+      "required": [
+        "libraryId",
+        "query"
       ],
       "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"

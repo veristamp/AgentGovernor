@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { join, resolve } from "path";
+import { join, resolve } from "node:path";
 
 import type { LlmClient } from "../agent/llm_client";
 import { runAgentLoop } from "../agent_loop";
@@ -19,11 +19,7 @@ import {
 	type SkillDraftResponse,
 	type ToolSelectionResponse,
 } from "./prompt_builder";
-import {
-	expandTools,
-	loadTools,
-	retrieveRelevantTools,
-} from "./tool_retriever";
+import { loadTools, retrieveRelevantTools } from "./tool_retriever";
 import type {
 	AbacRuleProposal,
 	SkillCreationRequest,
@@ -209,8 +205,8 @@ export class SkillCreatorAgent {
 			);
 
 			// 6. Parse & Repair Loop
-			let draft: SkillDraftResponse | undefined;
-			draft = await this.parseAndRepair(responseText);
+			const draft: SkillDraftResponse | undefined =
+				await this.parseAndRepair(responseText);
 
 			if (!draft) {
 				throw new Error("Failed to parse LLM response after repairs");
@@ -438,7 +434,7 @@ When done, return type=final with result matching the skill draft JSON schema:
 				if (jsonStr) {
 					return JSON.parse(jsonStr) as T;
 				}
-			} catch (e) {
+			} catch (_e) {
 				attempts++;
 				console.warn(
 					`[SkillCreator] JSON parse failed, repairing (${attempts}/${maxRepair})...`,
@@ -613,9 +609,7 @@ When done, return type=final with result matching the skill draft JSON schema:
 		skillId: string,
 		interfaces: string[],
 	): SkillExample[] {
-		const filtered = (examples || []).filter(
-			(e) => e && typeof (e as any).code === "string" && (e as any).code.trim(),
-		);
+		const filtered = (examples || []).filter((e) => e.code.trim());
 		if (filtered.length) {
 			return filtered;
 		}
@@ -643,10 +637,7 @@ When done, return type=final with result matching the skill draft JSON schema:
 			const description = example.description
 				? `${example.description}\n\n`
 				: "";
-			const code =
-				typeof (example as any).code === "string"
-					? (example as any).code.trim()
-					: "";
+			const code = example.code.trim();
 			return `${title}${description}\`\`\`python\n${code}\n\`\`\``;
 		});
 		return `## Examples\n\n${blocks.join("\n\n")}`;

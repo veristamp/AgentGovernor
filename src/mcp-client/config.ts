@@ -15,7 +15,7 @@
  * }
  */
 
-import { resolve as resolvePath } from "path";
+import { resolve as resolvePath } from "node:path";
 import type { Config, ServerConfig } from "./types";
 
 export async function loadConfig(

@@ -133,13 +133,12 @@ export class AuditLogger {
 		if (!this.options.filePath) return;
 
 		try {
-			const line =
-				JSON.stringify({
-					...entry,
-					timestamp: entry.timestamp.toISOString(),
-				}) + "\n";
+			const line = `${JSON.stringify({
+				...entry,
+				timestamp: entry.timestamp.toISOString(),
+			})}\n`;
 
-			const { appendFile } = await import("fs/promises");
+			const { appendFile } = await import("node:fs/promises");
 			await appendFile(this.options.filePath, line);
 		} catch (e) {
 			console.error("[AuditLogger] Failed to write to file:", e);

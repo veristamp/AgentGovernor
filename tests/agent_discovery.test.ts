@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { existsSync, rmSync } from "fs";
-import { resolve } from "path";
 import { Agent, LlmClient } from "../src/agent";
 import { PolicyEngine } from "../src/policy";
 import { WorkflowRegistry } from "../src/workflow_registry";
@@ -16,7 +14,7 @@ class FakeDiscoveryLlm extends LlmClient {
 		messages: { role: string; content: string }[],
 	): Promise<string> {
 		this.callCount += 1;
-		const prompt = messages.map((message) => message.content).join("\n");
+		const _prompt = messages.map((message) => message.content).join("\n");
 
 		// 1. First call: ask to expand skill context
 		if (this.callCount === 1) {

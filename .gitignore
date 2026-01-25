@@ -26,8 +26,6 @@ uv.lock
 tools_schema.json
 node_modules
 output
-file_patcher
-judgment
 sdk
 legacy
 workflows_gcm
@@ -41,3 +39,4 @@ registry.sqlite
 registry.sqlite-shm
 registry.sqlite-wal
 drizzle
+bun.lock

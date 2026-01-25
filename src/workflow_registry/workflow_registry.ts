@@ -1,12 +1,12 @@
-import { eq, sql } from "drizzle-orm";
 import {
 	existsSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
 	writeFileSync,
-} from "fs";
-import { join, resolve } from "path";
+} from "node:fs";
+import { join, resolve } from "node:path";
+import { eq, sql } from "drizzle-orm";
 import { db, toTsVector } from "../registry/db";
 import { workflows } from "../registry/schema";
 import type {
@@ -128,7 +128,7 @@ export class WorkflowRegistry {
 			join(workflowDir, "manifest.json"),
 			JSON.stringify(manifest, null, 2),
 		);
-		writeFileSync(join(workflowDir, "workflow.py"), code.trim() + "\n");
+		writeFileSync(join(workflowDir, "workflow.py"), `${code.trim()}\n`);
 
 		// 2. Sync to DB
 		await this.upsert(metadata, code);

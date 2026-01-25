@@ -5,7 +5,7 @@
  * This is the communication channel between NsJail sandbox and MCPClientManager.
  */
 
-import { createServer, type Server, type Socket } from "net";
+import { createServer, type Server, type Socket } from "node:net";
 import type { MCPClientManager } from "../mcp-client/manager";
 import type { ExecutionContext } from "../mcp-client/types";
 import { GcmRegistrySearch } from "../skills_registry/search";
@@ -87,7 +87,7 @@ export class SocketServer {
 		// Close server
 		if (this.server) {
 			return new Promise((resolve) => {
-				this.server!.close(async () => {
+				this.server?.close(async () => {
 					console.log("[SocketServer] Stopped");
 
 					// Clean up socket file (not needed for Windows named pipes)
@@ -112,8 +112,10 @@ export class SocketServer {
 			buffer += data.toString();
 
 			// Process complete lines (JSON-RPC messages are newline-delimited)
-			let newlineIndex;
-			while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+			for (;;) {
+				const newlineIndex = buffer.indexOf("\n");
+				if (newlineIndex === -1) break;
+
 				const line = buffer.slice(0, newlineIndex);
 				buffer = buffer.slice(newlineIndex + 1);
 
@@ -144,7 +146,7 @@ export class SocketServer {
 			return createError(
 				null,
 				ErrorCodes.PARSE_ERROR,
-				"Parse error: " + String(e),
+				`Parse error: ${String(e)}`,
 			);
 		}
 

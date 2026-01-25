@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
-import { join, resolve } from "path";
 import { analyzeSkillCode } from "../audit";
 import { getOrgPolicyPaths } from "../policy/org_config";
 import { db, toTsVector } from "../registry/db";
@@ -32,7 +32,7 @@ const DEFAULT_SKILLS_DIR = resolve("skills");
 export class SkillRegistry {
 	private skillsDir: string;
 
-	constructor(skillsDir: string = DEFAULT_SKILLS_DIR, dbPath?: string) {
+	constructor(skillsDir: string = DEFAULT_SKILLS_DIR, _dbPath?: string) {
 		this.skillsDir = resolve(skillsDir);
 	}
 
@@ -65,7 +65,7 @@ export class SkillRegistry {
 			if (count > 0) {
 				console.log(`[SkillRegistry] Ingested ${count} skills.`);
 			}
-		} catch (e) {
+		} catch (_e) {
 			// Directory might not exist
 		}
 	}
@@ -85,7 +85,8 @@ export class SkillRegistry {
 		const version = String(signature?.version ?? data.version ?? 1);
 		const skillRef = signature?.skillRef ?? `skills:${skillId}@${version}`;
 
-		const ownerOrgId = typeof data.ownerOrgId === "string" ? data.ownerOrgId : undefined;
+		const ownerOrgId =
+			typeof data.ownerOrgId === "string" ? data.ownerOrgId : undefined;
 
 		const libPath = join(skillDir, "lib.py");
 		if (await Bun.file(libPath).exists()) {
@@ -114,7 +115,7 @@ export class SkillRegistry {
 		const examples: SkillExample[] | undefined = signature?.examples;
 		const keywords: string[] | undefined = signature?.keywords;
 
-		if (functions && functions.length) {
+		if (functions?.length) {
 			interfaces = this.buildInterfacesFromFunctions(functions);
 		} else if (data.interfaces && Array.isArray(data.interfaces)) {
 			interfaces = data.interfaces;

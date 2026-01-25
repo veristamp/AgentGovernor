@@ -1,6 +1,6 @@
 # filesystem.list-allowed-directories
 
-> Returns the list of directories this server can access.
+> Show current allowed directories.
 
 ## Signature
 
@@ -10,7 +10,7 @@ await list-allowed-directories()
 
 ## Description
 
-Returns the list of directories this server can access.
+Show current allowed directories.
 
 ## Usage Example
 

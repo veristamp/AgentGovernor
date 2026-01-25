@@ -35,7 +35,7 @@ const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD ?? "968746639000";
 const MY_AUDIENCE = "mcp://rag-demo-service"; // Must be in MCP_VALID_AUDIENCES env var
 
 function printHeader(title: string): void {
-	console.log("\n" + "=".repeat(70));
+	console.log(`\n${"=".repeat(70)}`);
 	console.log(`  ${title}`);
 	console.log("=".repeat(70));
 }
@@ -79,11 +79,16 @@ async function main(): Promise<number> {
 	});
 	const orgId = orgData.id ?? orgData.organization?.id;
 	console.log(`✅ Org: ${orgId?.slice(0, 16)}...`);
+	if (!orgId) {
+		console.log("❌ Org creation returned no orgId");
+		console.log(`   Response: ${JSON.stringify(orgData)}`);
+		return 1;
+	}
 
 	// Create invite with roles (RBAC approach)
 	console.log("\n🎟️  Creating invite with ROLES...");
 	const invite = await admin.createInvite({
-		orgId: orgId!,
+		orgId,
 		budget: 5,
 		ttlSeconds: 600,
 		allowedScopes: ["read:files"], // OAuth scopes (for token request)

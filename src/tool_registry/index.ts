@@ -9,7 +9,9 @@ let instance: ToolRegistry | null = null;
 export function getToolRegistry(toolsDir?: string): ToolRegistry {
 	if (!instance) {
 		instance = new ToolRegistry({ toolsDir });
-		instance.ingest();
+		void instance.ingest().catch((err) => {
+			console.warn("[ToolRegistry] Ingest failed:", err);
+		});
 	}
 	return instance;
 }

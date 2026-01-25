@@ -193,13 +193,17 @@ export function createSkillCreatorLoopTools(params: {
 				}
 				const skill = await params.skillRegistry.inspect(skillRef);
 				if (!skill) return { skill: null };
+				const rawDeps = (skill as { dependencies?: unknown }).dependencies;
+				const dependencies = Array.isArray(rawDeps)
+					? rawDeps.filter((d): d is string => typeof d === "string")
+					: [];
 				return {
 					skill: {
 						skillRef: skill.skillRef,
 						description: skill.description,
 						interfaces: skill.interfaces,
 						examples: skill.examples ?? [],
-						dependencies: (skill as any).dependencies ?? [],
+						dependencies,
 					},
 				};
 			},

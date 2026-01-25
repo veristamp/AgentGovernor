@@ -2,17 +2,17 @@
 	"qualifiedName": "filesystem.create-directory",
 	"serverPrefix": "filesystem",
 	"name": "create-directory",
-	"originalName": "create-directory",
-	"description": "Create a new directory or ensure it exists.\nCreates nested directories if needed. Only works within allowed directories.",
+	"originalName": "create_directory",
+	"description": "Create a directory (recursively). Only works within allowed directories.",
 	"schema": {
 		"type": "object",
 		"properties": {
 			"path": {
-				"type": "string",
-				"description": "Path to the directory"
+				"type": "string"
 			}
 		},
 		"required": ["path"],
+		"additionalProperties": false,
 		"$schema": "http://json-schema.org/draft-07/schema#"
 	}
 }

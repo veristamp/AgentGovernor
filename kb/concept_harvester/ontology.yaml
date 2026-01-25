@@ -1,0 +1,119 @@
+# ontology.yaml - Technical & Research Knowledge Graph Labels
+#
+# DOMAIN: Code library docs, scientific papers, GitHub, AI research
+#
+# PHILOSOPHY: Extract CONCEPTS that:
+# 1. Link documents together (high retrieval value)
+# 2. Represent knowledge worth finding
+# 3. Are domain-specific enough to be discriminative
+# 4. Avoid code noise (variables, method calls, generic terms)
+#
+# STRUCTURE: Categories are flat (GLiNER sees only the label set)
+# but organized here for human readability.
+
+# =============================================================================
+# SOFTWARE ENGINEERING
+# =============================================================================
+software:
+  # Core Building Blocks
+  - Technology
+  - Framework
+  - Library
+  - Programming Language
+  - Software Tool
+  
+  # Architecture & Design
+  - Design Pattern
+  - Architecture Pattern
+  - Software Architecture
+  - API
+  - Protocol
+  - Data Format
+  
+  # Databases & Storage
+  - Database
+  - Database System
+  - Query Language
+  - Storage Engine
+
+# =============================================================================
+# AI & MACHINE LEARNING
+# =============================================================================
+ai_ml:
+  # Model Types
+  - Neural Network
+  - Machine Learning Model
+  - Language Model
+  - Deep Learning Model
+  
+  # Techniques & Methods
+  - Algorithm
+  - Training Technique
+  - Optimization Method
+  - Loss Function
+  - Activation Function
+  
+  # Core Concepts
+  - Embedding
+  - Attention Mechanism
+  - Transformer
+  - Vector Database
+  - RAG
+  - Retrieval Augmented Generation
+  
+  # Metrics & Evaluation
+  - Evaluation Metric
+  - Benchmark
+
+# =============================================================================
+# SCIENTIFIC & RESEARCH
+# =============================================================================
+research:
+  # Concepts
+  - Scientific Concept
+  - Methodology
+  - Research Method
+  - Theorem
+  - Mathematical Concept
+  
+  # Publications & Standards
+  - Research Paper
+  - Standard
+  - Specification
+
+# =============================================================================
+# NAMED ENTITIES (High Linking Power)
+# =============================================================================
+entities:
+  - Organization
+  - Company
+  - Research Lab
+  - Product
+  - Service
+  - Open Source Project
+  - Dataset
+
+# =============================================================================
+# DOMAIN-SPECIFIC CONCEPTS
+# =============================================================================
+domains:
+  # Web & APIs
+  - Web Framework
+  - REST API
+  - GraphQL
+  - WebSocket
+  
+  # Data Processing
+  - Data Pipeline
+  - ETL Process
+  - Data Structure
+  
+  # DevOps & Infrastructure
+  - Cloud Service
+  - Container
+  - Orchestration Platform
+  
+  # Security
+  - Security Protocol
+  - Authentication Method
+  - Encryption Algorithm

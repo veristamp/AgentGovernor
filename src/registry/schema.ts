@@ -1,12 +1,4 @@
-import { sql } from "drizzle-orm";
-import {
-	customType,
-	index,
-	jsonb,
-	pgSchema,
-	pgTable,
-	text,
-} from "drizzle-orm/pg-core";
+import { customType, index, jsonb, pgSchema, text } from "drizzle-orm/pg-core";
 
 export const gcmSchema = pgSchema("gcm_registry");
 

@@ -10,14 +10,12 @@ const OPENAI_API_BASE =
 const USE_REAL_LLM = !!OPENAI_API_KEY;
 
 class FakeAgentLlm extends LlmClient {
-	private callCount = 0;
-
 	constructor() {
 		super("http://localhost", "");
 	}
 
 	override async complete(
-		messages: { role: string; content: string }[],
+		_messages: { role: string; content: string }[],
 	): Promise<string> {
 		this.callCount += 1;
 
@@ -47,7 +45,10 @@ test("agent end-to-end with local LLM", async () => {
 
 	if (USE_REAL_LLM) {
 		console.log("Using Real OpenAI LLM for Agent E2E Test");
-		llmClient = new LlmClient(OPENAI_API_BASE, OPENAI_API_KEY!);
+		if (!OPENAI_API_KEY) {
+			throw new Error("OPENAI_API_KEY is required when USE_REAL_LLM=true");
+		}
+		llmClient = new LlmClient(OPENAI_API_BASE, OPENAI_API_KEY);
 		modelName = "gpt-4o-mini";
 	} else {
 		console.log("Using Fake LLM for Agent E2E Test");

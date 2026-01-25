@@ -1,25 +1,25 @@
 # filesystem.edit-file
 
-> Make line-based edits to a text file with flexible matching.
+> Structured replace edits for text files. Returns a unified diff. Use dry_run=true first.
 
 ## Signature
 
 ```python
-await edit-file(path: str, edits: list, dry_run: bool = true)
+await edit-file(path: str, edits: list, dry_run: bool = true, require_all: bool = true)
 ```
 
 ## Description
 
-Make line-based edits to a text file with flexible matching.
-Returns a git-style diff and a UI preview.
+Structured replace edits for text files. Returns a unified diff. Use dry_run=true first.
 
 ## Parameters
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `path` | string | ✓ | Path to the file |
-| `edits` | array | ✓ | List of edit operations |
-| `dry_run` | boolean |  | Whether to perform a dry run |
+| `path` | string | ✓ | - |
+| `edits` | array | ✓ | - |
+| `dry_run` | boolean |  | - |
+| `require_all` | boolean |  | - |
 
 ## Usage Example
 

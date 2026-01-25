@@ -1,6 +1,6 @@
 # filesystem.move-file
 
-> Move or rename files and directories.
+> Move/rename a file or directory. Fails if destination exists. Only works within allowed directories.
 
 ## Signature
 
@@ -10,15 +10,14 @@ await move-file(source: str, destination: str)
 
 ## Description
 
-Move or rename files and directories.
-Fails if destination exists. Only works within allowed directories.
+Move/rename a file or directory. Fails if destination exists. Only works within allowed directories.
 
 ## Parameters
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `source` | string | ✓ | Source path |
-| `destination` | string | ✓ | Destination path |
+| `source` | string | ✓ | - |
+| `destination` | string | ✓ | - |
 
 ## Usage Example
 

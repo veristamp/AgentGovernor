@@ -2,17 +2,17 @@
 	"qualifiedName": "filesystem.get-file-info",
 	"serverPrefix": "filesystem",
 	"name": "get-file-info",
-	"originalName": "get-file-info",
-	"description": "Retrieve detailed metadata about a file or directory.\nIncludes size, timestamps, and permissions. Only works within allowed directories.",
+	"originalName": "get_file_info",
+	"description": "Get file/directory metadata. Only works within allowed directories.",
 	"schema": {
 		"type": "object",
 		"properties": {
 			"path": {
-				"type": "string",
-				"description": "Path to the file"
+				"type": "string"
 			}
 		},
 		"required": ["path"],
+		"additionalProperties": false,
 		"$schema": "http://json-schema.org/draft-07/schema#"
 	}
 }

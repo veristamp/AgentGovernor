@@ -1,14 +1,19 @@
+import crypto from "node:crypto";
 import {
 	accessSync,
 	type Dirent,
 	constants as fsConstants,
 	statSync,
 } from "node:fs";
-import { mkdir, readdir, realpath, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, realpath, rename, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+	type Root,
+	RootsListChangedNotificationSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 const args = process.argv.slice(2);
@@ -77,16 +82,38 @@ const validatePath = async (requestedPath: string) => {
 		);
 	}
 
-	const parent = path.dirname(absolute);
-	const realParent = await realpath(parent).catch(() => parent);
-	const realPath = path.join(realParent, path.basename(absolute));
-	if (!allowedDirectories.some((root) => isWithin(realPath, root))) {
-		throw new Error(
-			"Access denied - symlink target outside allowed directories",
-		);
+	// If target exists, validate resolved (symlink-safe)
+	try {
+		const resolved = await realpath(absolute);
+		if (!allowedDirectories.some((root) => isWithin(resolved, root))) {
+			throw new Error(
+				`Access denied - symlink target outside allowed directories: ${resolved}`,
+			);
+		}
+		return resolved;
+	} catch (err) {
+		// For new paths, verify the parent exists and is inside allowed dirs.
+		const code =
+			err &&
+			typeof err === "object" &&
+			"code" in err &&
+			typeof (err as { code?: unknown }).code === "string"
+				? (err as { code: string }).code
+				: undefined;
+		if (code === "ENOENT") {
+			const parent = path.dirname(absolute);
+			const resolvedParent = await realpath(parent).catch(() => {
+				throw new Error(`Parent directory does not exist: ${parent}`);
+			});
+			if (!allowedDirectories.some((root) => isWithin(resolvedParent, root))) {
+				throw new Error(
+					`Access denied - parent directory outside allowed directories: ${resolvedParent}`,
+				);
+			}
+			return absolute;
+		}
+		throw err;
 	}
-
-	return realPath;
 };
 
 const normalizeLineEndings = (text: string) => text.replace(/\r\n/g, "\n");
@@ -104,10 +131,16 @@ const createUnifiedDiff = (
 
 	for (let i = 1; i <= originalLines.length; i += 1) {
 		for (let j = 1; j <= modifiedLines.length; j += 1) {
+			const row = dp[i];
+			const upRow = dp[i - 1];
+			if (!row || !upRow) {
+				throw new Error("Invariant failed: dp rows missing");
+			}
+
 			if (originalLines[i - 1] === modifiedLines[j - 1]) {
-				dp[i]![j] = dp[i - 1]![j - 1]! + 1;
+				row[j] = (upRow[j - 1] ?? 0) + 1;
 			} else {
-				dp[i]![j] = Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!);
+				row[j] = Math.max(upRow[j] ?? 0, row[j - 1] ?? 0);
 			}
 		}
 	}
@@ -120,7 +153,7 @@ const createUnifiedDiff = (
 			diffLines.push(` ${originalLines[i - 1]}`);
 			i -= 1;
 			j -= 1;
-		} else if (dp[i - 1]![j]! >= dp[i]![j - 1]!) {
+		} else if ((dp[i - 1]?.[j] ?? 0) >= (dp[i]?.[j - 1] ?? 0)) {
 			diffLines.push(`-${originalLines[i - 1]}`);
 			i -= 1;
 		} else {
@@ -141,6 +174,57 @@ const createUnifiedDiff = (
 
 	diffLines.reverse();
 	return [`--- ${filepath}`, `+++ ${filepath}`, ...diffLines].join("\n");
+};
+
+const sha256Hex = (text: string) =>
+	crypto.createHash("sha256").update(text).digest("hex");
+
+const fileLinesToSpan = (
+	content: string,
+	startLine1: number,
+	endLine1: number,
+): { start: number; end: number } => {
+	if (startLine1 < 1 || endLine1 < 1 || endLine1 < startLine1) {
+		throw new Error(
+			"Invalid line range: start_line/end_line are 1-based and end_line must be >= start_line",
+		);
+	}
+
+	const lines = normalizeLineEndings(content).split("\n");
+	if (startLine1 > lines.length || endLine1 > lines.length) {
+		throw new Error(`Line range out of bounds. File has ${lines.length} lines`);
+	}
+
+	let start = 0;
+	for (let i = 1; i < startLine1; i += 1) {
+		start += (lines[i - 1]?.length ?? 0) + 1;
+	}
+
+	let end = start;
+	for (let i = startLine1; i <= endLine1; i += 1) {
+		end += lines[i - 1]?.length ?? 0;
+		if (i !== lines.length) end += 1;
+	}
+
+	return { start, end };
+};
+
+const atomicWrite = async (
+	filePath: string,
+	data: string | Uint8Array,
+): Promise<void> => {
+	const dir = path.dirname(filePath);
+	await mkdir(dir, { recursive: true });
+	const tmp = path.join(
+		dir,
+		`.tmp.${path.basename(filePath)}.${crypto.randomBytes(8).toString("hex")}`,
+	);
+	try {
+		await Bun.write(tmp, data);
+		await rename(tmp, filePath);
+	} finally {
+		await rm(tmp, { force: true }).catch(() => {});
+	}
 };
 
 const searchFilesImpl = async (
@@ -199,6 +283,49 @@ const server = new McpServer({
 	version: "2.0.0",
 });
 
+async function updateAllowedDirectoriesFromRoots(
+	requestedRoots: readonly Root[],
+) {
+	const next: string[] = [];
+	for (const r of requestedRoots) {
+		const raw = r.uri.startsWith("file://") ? r.uri.slice(7) : r.uri;
+		const absolute = normalizePath(raw);
+		try {
+			const resolved = await realpath(absolute);
+			const info = await stat(resolved);
+			if (info.isDirectory()) next.push(resolved);
+		} catch {}
+	}
+
+	if (next.length > 0) {
+		allowedDirectories = next;
+	}
+}
+
+server.server.setNotificationHandler(
+	RootsListChangedNotificationSchema,
+	async () => {
+		try {
+			const resp = await server.server.listRoots();
+			if (resp && "roots" in resp) {
+				await updateAllowedDirectoriesFromRoots(resp.roots);
+			}
+		} catch {}
+	},
+);
+
+server.server.oninitialized = async () => {
+	const caps = server.server.getClientCapabilities();
+	if (caps?.roots) {
+		try {
+			const resp = await server.server.listRoots();
+			if (resp && "roots" in resp) {
+				await updateAllowedDirectoriesFromRoots(resp.roots);
+			}
+		} catch {}
+	}
+};
+
 // Register tools using the non-deprecated registerTool API
 server.registerTool(
 	"read-file",
@@ -219,6 +346,7 @@ server.registerTool(
 					'"utf-8" for text files (default), "base64" for binary files (xlsx, images, pdf)',
 				),
 		},
+		annotations: { readOnlyHint: true },
 	},
 	async ({ path: filePath, encoding }) => {
 		const validPath = await validatePath(filePath);
@@ -249,6 +377,7 @@ server.registerTool(
 		inputSchema: {
 			paths: z.array(z.string()).describe("Paths to the files"),
 		},
+		annotations: { readOnlyHint: true },
 	},
 	async ({ paths }) => {
 		const results: string[] = [];
@@ -294,6 +423,11 @@ server.registerTool(
 				),
 			max_bytes: z.number().default(2000000).describe("Maximum bytes to write"),
 		},
+		annotations: {
+			readOnlyHint: false,
+			idempotentHint: true,
+			destructiveHint: true,
+		},
 	},
 	async ({ path: filePath, content, encoding, max_bytes }) => {
 		const validPath = await validatePath(filePath);
@@ -310,7 +444,7 @@ server.registerTool(
 				throw new Error(`Refusing to write >${max_bytes} bytes`);
 			}
 
-			await Bun.write(validPath, binary);
+			await atomicWrite(validPath, binary);
 			return {
 				content: [
 					{
@@ -326,7 +460,7 @@ server.registerTool(
 			throw new Error(`Refusing to write >${max_bytes} bytes`);
 		}
 
-		await Bun.write(validPath, content);
+		await atomicWrite(validPath, content);
 		return {
 			content: [{ type: "text", text: `Successfully wrote to ${filePath}` }],
 		};
@@ -353,6 +487,11 @@ server.registerTool(
 				.boolean()
 				.default(true)
 				.describe("Whether to perform a dry run"),
+		},
+		annotations: {
+			readOnlyHint: false,
+			idempotentHint: false,
+			destructiveHint: true,
 		},
 	},
 	async ({ path: filePath, edits, dry_run }) => {
@@ -396,11 +535,230 @@ server.registerTool(
 		}
 
 		const diff = createUnifiedDiff(original, modified, validPath);
-		if (!dry_run) {
-			await Bun.write(validPath, modified);
-		}
+		if (!dry_run) await atomicWrite(validPath, modified);
 
 		return { content: [{ type: "text", text: diff }] };
+	},
+);
+
+server.registerTool(
+	"patch-lines",
+	{
+		description:
+			"LLM-friendly surgical patch: replace a 1-based inclusive line range with new content. " +
+			"Returns a unified diff. Use dry_run=true first.",
+		inputSchema: {
+			path: z.string().describe("Path to the file"),
+			start_line: z.number().describe("1-based start line (inclusive)"),
+			end_line: z.number().describe("1-based end line (inclusive)"),
+			new_content: z.string().describe("Replacement content"),
+			expected_sha256: z
+				.string()
+				.optional()
+				.describe("Optional sha256 guard of the selected slice"),
+			allow_drift: z
+				.boolean()
+				.default(false)
+				.describe("If true, proceed even if expected_sha256 mismatches"),
+			dry_run: z.boolean().default(true),
+		},
+		annotations: {
+			readOnlyHint: false,
+			idempotentHint: false,
+			destructiveHint: true,
+		},
+	},
+	async ({
+		path: filePath,
+		start_line,
+		end_line,
+		new_content,
+		expected_sha256,
+		allow_drift,
+		dry_run,
+	}) => {
+		const validPath = await validatePath(filePath);
+		const file = Bun.file(validPath);
+		if (!(await file.exists())) throw new Error(`File not found: ${filePath}`);
+
+		const original = normalizeLineEndings(await file.text());
+		const span = fileLinesToSpan(original, start_line, end_line);
+		const currentSlice = original.slice(span.start, span.end);
+		if (expected_sha256) {
+			const got = sha256Hex(currentSlice);
+			if (got !== expected_sha256.toLowerCase()) {
+				if (!allow_drift)
+					throw new Error("Content drift detected for selected line range");
+			}
+		}
+
+		const modified =
+			original.slice(0, span.start) + new_content + original.slice(span.end);
+		const diff = createUnifiedDiff(original, modified, validPath);
+		if (!dry_run) await atomicWrite(validPath, modified);
+		return { content: [{ type: "text", text: diff }] };
+	},
+);
+
+server.registerTool(
+	"patch-span",
+	{
+		description:
+			"Advanced surgical patch: replace a 0-based character span [start:end] with new content. " +
+			"Optionally guard with expected_sha256 of the current slice.",
+		inputSchema: {
+			path: z.string().describe("Path to the file"),
+			start: z.number().describe("0-based char offset (inclusive)"),
+			end: z.number().describe("0-based char offset (exclusive)"),
+			new_content: z.string().describe("Replacement content"),
+			expected_sha256: z
+				.string()
+				.optional()
+				.describe("Optional sha256 guard of the selected slice"),
+			allow_drift: z
+				.boolean()
+				.default(false)
+				.describe("If true, proceed even if expected_sha256 mismatches"),
+			dry_run: z.boolean().default(true),
+		},
+		annotations: {
+			readOnlyHint: false,
+			idempotentHint: false,
+			destructiveHint: true,
+		},
+	},
+	async ({
+		path: filePath,
+		start,
+		end,
+		new_content,
+		expected_sha256,
+		allow_drift,
+		dry_run,
+	}) => {
+		const validPath = await validatePath(filePath);
+		const file = Bun.file(validPath);
+		if (!(await file.exists())) throw new Error(`File not found: ${filePath}`);
+
+		const original = normalizeLineEndings(await file.text());
+		if (start < 0 || end < 0 || start > end || end > original.length) {
+			throw new Error(
+				`Invalid offsets: start=${start}, end=${end}, len=${original.length}`,
+			);
+		}
+		const currentSlice = original.slice(start, end);
+		if (expected_sha256) {
+			const got = sha256Hex(currentSlice);
+			if (got !== expected_sha256.toLowerCase()) {
+				if (!allow_drift)
+					throw new Error("Content drift detected for selected span");
+			}
+		}
+		const modified =
+			original.slice(0, start) + new_content + original.slice(end);
+		const diff = createUnifiedDiff(original, modified, validPath);
+		if (!dry_run) await atomicWrite(validPath, modified);
+		return { content: [{ type: "text", text: diff }] };
+	},
+);
+
+server.registerTool(
+	"stitch-file",
+	{
+		description:
+			"Frankenstein stitcher: assemble a new file from byte slices of existing files. " +
+			"Each graft copies [start:end] from a source file, with optional glue/comment.",
+		inputSchema: {
+			grafts: z.array(
+				z.object({
+					source: z.string().describe("Source file path"),
+					start: z.number().describe("0-based char offset (inclusive)"),
+					end: z.number().describe("0-based char offset (exclusive)"),
+					comment: z
+						.string()
+						.optional()
+						.describe("Optional comment inserted before this graft"),
+					glue: z
+						.string()
+						.optional()
+						.describe("Optional text appended after this graft"),
+				}),
+			),
+			output_path: z.string().describe("Where to write the stitched file"),
+			overwrite: z.boolean().default(false),
+			dry_run: z.boolean().default(true),
+		},
+		annotations: {
+			readOnlyHint: false,
+			idempotentHint: false,
+			destructiveHint: true,
+		},
+	},
+	async ({ grafts, output_path, overwrite, dry_run }) => {
+		const outPath = await validatePath(output_path);
+		if (!overwrite && (await Bun.file(outPath).exists())) {
+			throw new Error(`Output exists: ${output_path}`);
+		}
+
+		const formatComment = (filePath: string, comment: string) => {
+			const ext = path.extname(filePath).toLowerCase();
+			if (
+				[
+					".js",
+					".ts",
+					".tsx",
+					".jsx",
+					".go",
+					".rs",
+					".c",
+					".cpp",
+					".java",
+				].includes(ext)
+			) {
+				return `// ${comment}`;
+			}
+			if ([".html", ".xml"].includes(ext)) return `<!-- ${comment} -->`;
+			if ([".css", ".scss"].includes(ext)) return `/* ${comment} */`;
+			return `# ${comment}`;
+		};
+
+		const parts: string[] = [];
+		for (const g of grafts) {
+			const srcPath = await validatePath(g.source);
+			const srcFile = Bun.file(srcPath);
+			if (!(await srcFile.exists()))
+				throw new Error(`Source not found: ${g.source}`);
+			const src = normalizeLineEndings(await srcFile.text());
+			if (g.start < 0 || g.end < 0 || g.start > g.end || g.end > src.length) {
+				throw new Error(
+					`Invalid graft offsets for ${g.source}: start=${g.start}, end=${g.end}, len=${src.length}`,
+				);
+			}
+			if (g.comment) parts.push(formatComment(output_path, g.comment));
+			parts.push(src.slice(g.start, g.end));
+			if (g.glue) parts.push(g.glue);
+		}
+
+		const assembled = parts.join("\n");
+		if (!dry_run) await atomicWrite(outPath, assembled);
+		return {
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify(
+						{
+							success: true,
+							output_path: outPath,
+							grafts: grafts.length,
+							bytes: assembled.length,
+							dry_run,
+						},
+						null,
+						2,
+					),
+				},
+			],
+		};
 	},
 );
 
@@ -412,6 +770,11 @@ server.registerTool(
 			"Creates nested directories if needed. Only works within allowed directories.",
 		inputSchema: {
 			path: z.string().describe("Path to the directory"),
+		},
+		annotations: {
+			readOnlyHint: false,
+			idempotentHint: true,
+			destructiveHint: false,
 		},
 	},
 	async ({ path: filePath }) => {
@@ -434,6 +797,7 @@ server.registerTool(
 		inputSchema: {
 			path: z.string().describe("Path to the directory"),
 		},
+		annotations: { readOnlyHint: true },
 	},
 	async ({ path: filePath }) => {
 		const validPath = await validatePath(filePath);
@@ -482,6 +846,7 @@ server.registerTool(
 				.default(5000)
 				.describe("Maximum number of nodes in the tree"),
 		},
+		annotations: { readOnlyHint: true },
 	},
 	async ({ path: filePath, max_depth, max_nodes }) => {
 		const validPath = await validatePath(filePath);
@@ -536,6 +901,11 @@ server.registerTool(
 			source: z.string().describe("Source path"),
 			destination: z.string().describe("Destination path"),
 		},
+		annotations: {
+			readOnlyHint: false,
+			idempotentHint: false,
+			destructiveHint: false,
+		},
 	},
 	async ({ source, destination }) => {
 		const validSource = await validatePath(source);
@@ -571,6 +941,7 @@ server.registerTool(
 				.default([])
 				.describe("Patterns to exclude"),
 		},
+		annotations: { readOnlyHint: true },
 	},
 	async ({ path: filePath, pattern, exclude_patterns }) => {
 		const validPath = await validatePath(filePath);
@@ -589,6 +960,7 @@ server.registerTool(
 		inputSchema: {
 			path: z.string().describe("Path to the file"),
 		},
+		annotations: { readOnlyHint: true },
 	},
 	async ({ path: filePath }) => {
 		const validPath = await validatePath(filePath);
@@ -609,7 +981,10 @@ server.registerTool(
 
 server.registerTool(
 	"list-allowed-directories",
-	{ description: "Returns the list of directories this server can access." },
+	{
+		description: "Returns the list of directories this server can access.",
+		annotations: { readOnlyHint: true },
+	},
 	async () => {
 		const output = `Allowed directories:\n${allowedDirectories.join("\n")}`;
 		return { content: [{ type: "text", text: output }] };
@@ -622,6 +997,11 @@ server.registerTool(
 		description: "Update the list of allowed directories at runtime.",
 		inputSchema: {
 			directories: z.array(z.string()).describe("List of directories"),
+		},
+		annotations: {
+			readOnlyHint: false,
+			idempotentHint: true,
+			destructiveHint: false,
 		},
 	},
 	async ({ directories }) => {

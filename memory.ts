@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { promises as fs } from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { z } from "zod";
 
 // Define memory file path using environment variable with fallback
@@ -107,11 +107,14 @@ export class KnowledgeGraphManager {
 				{ entities: [], relations: [] },
 			);
 		} catch (error) {
-			if (
-				error instanceof Error &&
+			const code =
+				error &&
+				typeof error === "object" &&
 				"code" in error &&
-				(error as any).code === "ENOENT"
-			) {
+				typeof (error as { code?: unknown }).code === "string"
+					? (error as { code: string }).code
+					: undefined;
+			if (code === "ENOENT") {
 				return { entities: [], relations: [] };
 			}
 			throw error;

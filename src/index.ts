@@ -11,8 +11,8 @@
  *   bun run src/index.ts --execute code.py  # Execute workflow
  */
 
-import { platform } from "os";
-import { createInterface } from "readline/promises";
+import { platform } from "node:os";
+import { createInterface } from "node:readline/promises";
 import {
 	isNsJailAvailable,
 	launchSandbox,
@@ -64,7 +64,7 @@ export async function initialize(
  * Execute a workflow in the sandbox
  */
 export async function executeWorkflow(
-	gcm: GovernedCodeMode,
+	_gcm: GovernedCodeMode,
 	code: string,
 ): Promise<unknown> {
 	console.log("[GCM] Executing workflow...");

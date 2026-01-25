@@ -21,8 +21,8 @@
  *   bun run examples/gcm_full_demo.ts
  */
 
-import { existsSync, readFileSync } from "fs";
-import { platform } from "os";
+import { existsSync, readFileSync } from "node:fs";
+import { platform } from "node:os";
 import {
 	isNsJailAvailable,
 	launchSandbox,
@@ -31,7 +31,8 @@ import {
 import { analyzeCode } from "../src/audit/bridge";
 import { decodeJWT, MCPAdminClient, MCPAgentClient } from "../src/auth";
 import { MCPClientManager } from "../src/mcp-client";
-import { createSocketServer, SocketServer } from "../src/socket-server";
+import type { Manifest } from "../src/policy/types";
+import { createSocketServer } from "../src/socket-server";
 import { WorkflowRegistry } from "../src/workflow_registry";
 
 // =============================================================================
@@ -55,13 +56,26 @@ const getDefaultSocketPath = () => {
 const SOCKET_PATH = process.env.MCP_SOCKET_PATH || getDefaultSocketPath();
 
 function printHeader(title: string): void {
-	console.log("\n" + "=".repeat(70));
+	console.log(`\n${"=".repeat(70)}`);
 	console.log(`  ${title}`);
 	console.log("=".repeat(70));
 }
 
 function printSubheader(title: string): void {
 	console.log(`\n--- ${title} ---`);
+}
+
+function createFallbackManifest(skills: string[]): Manifest {
+	return {
+		skills,
+		tools: [],
+		toolCalls: [],
+		hasLoops: false,
+		hasConditionals: false,
+		maxDepth: 0,
+		errors: [],
+		warnings: [],
+	};
 }
 
 // =============================================================================
@@ -186,8 +200,12 @@ async function main(): Promise<number> {
 
 	// Create invite with RBAC roles
 	console.log("\n🎟️  Creating invite with RBAC roles...");
+	if (!orgId) {
+		console.log("❌ No orgId available for invite creation");
+		return 1;
+	}
 	const invite = await admin.createInvite({
-		orgId: orgId!,
+		orgId,
 		budget: 5,
 		ttlSeconds: 600,
 		allowedScopes: ["read:files"],
@@ -232,7 +250,7 @@ async function main(): Promise<number> {
 		'   • repo-insight.analyze_repo(query="Next.js routing docs summary", output_dir="output/reports", note_key="routing_docs_summary")',
 	);
 
-	let manifest;
+	let manifest: Manifest = createFallbackManifest([]);
 	try {
 		manifest = await analyzeCode(RAG_AGENT_CODE);
 		console.log("\n✅ Static analysis complete!");
@@ -242,7 +260,7 @@ async function main(): Promise<number> {
 		}
 	} catch (e) {
 		console.log(`\n❌ Static auditor failed: ${e}`);
-		manifest = { tools: [], skills: ["skills:docs-to-files@1"] };
+		manifest = createFallbackManifest(["skills:docs-to-files@1"]);
 		console.log("   Using mock manifest for demo");
 	}
 
@@ -326,11 +344,11 @@ async function main(): Promise<number> {
 		'   • repo-insight.analyze_repo(query="secrets in repository", output_dir="output/reports", note_key="secrets_scan")',
 	);
 
-	let maliciousManifest;
+	let maliciousManifest: Manifest = createFallbackManifest([]);
 	try {
 		maliciousManifest = await analyzeCode(MALICIOUS_CODE);
 	} catch {
-		maliciousManifest = { tools: [], skills: ["skills:repo-insight@1"] };
+		maliciousManifest = createFallbackManifest(["skills:repo-insight@1"]);
 	}
 
 	console.log("\n🔒 Pre-checking policy for malicious manifest...");

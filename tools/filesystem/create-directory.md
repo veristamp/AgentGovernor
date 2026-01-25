@@ -1,6 +1,6 @@
 # filesystem.create-directory
 
-> Create a new directory or ensure it exists.
+> Create a directory (recursively). Only works within allowed directories.
 
 ## Signature
 
@@ -10,14 +10,13 @@ await create-directory(path: str)
 
 ## Description
 
-Create a new directory or ensure it exists.
-Creates nested directories if needed. Only works within allowed directories.
+Create a directory (recursively). Only works within allowed directories.
 
 ## Parameters
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `path` | string | ✓ | Path to the directory |
+| `path` | string | ✓ | - |
 
 ## Usage Example
 

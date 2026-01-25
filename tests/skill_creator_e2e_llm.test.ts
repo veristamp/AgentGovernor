@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { existsSync, rmSync } from "fs";
-import { resolve } from "path";
+import { existsSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
 import { LlmClient } from "../src/agent";
 import { PolicyEngine } from "../src/policy/engine";
 import { SkillCreatorAgent } from "../src/skill_creator";
@@ -21,9 +21,12 @@ maybeTest(
 
 		const policy = new PolicyEngine();
 		await policy.loadRulesFromFile("policy/policy_rules.json");
+		if (!OPENAI_API_KEY) {
+			throw new Error("OPENAI_API_KEY is required for this test");
+		}
 
 		const agent = new SkillCreatorAgent(
-			{ llm: new LlmClient(OPENAI_API_BASE, OPENAI_API_KEY!), policy },
+			{ llm: new LlmClient(OPENAI_API_BASE, OPENAI_API_KEY), policy },
 			{
 				model: "gpt-4o-mini",
 				toolsPath: "tools_schema.json",

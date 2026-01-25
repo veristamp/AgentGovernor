@@ -1,4 +1,4 @@
-import { resolve } from "path";
+import { resolve } from "node:path";
 import type { AbacRuleProposal } from "../skill_creator/types";
 import { getOrgPolicyPaths } from "./org_config";
 import type { PolicyRule } from "./types";

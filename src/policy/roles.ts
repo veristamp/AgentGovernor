@@ -14,12 +14,12 @@
  * - "*" = all skills
  * - "skills:docs-to-files@1" = specific skill version
  */
-import { resolve } from "path";
+import { resolve } from "node:path";
 import { getOrgPolicyPaths } from "./org_config";
 
 const DEFAULT_ROLE_FILE_PATH = resolve("policy", "role_permissions.json");
 
-function loadRolePermissionsFromFile(): Record<string, string[]> {
+function _loadRolePermissionsFromFile(): Record<string, string[]> {
 	// Bun.file(path).json() is async, but we need sync here for the constant export.
 	// However, top-level await is supported in Bun modules.
 	// But ROLE_PERMISSIONS is exported as a constant.
@@ -90,11 +90,15 @@ export async function getRolePermissionsAsync(
 	for (const role of roles) {
 		// Check defaults
 		if (defaults[role]) {
-			defaults[role].forEach((p) => permissions.add(p));
+			defaults[role].forEach((p) => {
+				permissions.add(p);
+			});
 		}
 		// Check file-loaded
 		if (roleMap[role]) {
-			roleMap[role].forEach((p) => permissions.add(p));
+			roleMap[role].forEach((p) => {
+				permissions.add(p);
+			});
 		}
 	}
 
@@ -171,19 +175,19 @@ function matchesPattern(pattern: string, action: string): boolean {
 	// Prefix wildcard: "filesystem.*"
 	if (pattern.endsWith(".*")) {
 		const prefix = pattern.slice(0, -2);
-		return action.startsWith(prefix + ".");
+		return action.startsWith(`${prefix}.`);
 	}
 
 	// Suffix wildcard: "*.read_file"
 	if (pattern.startsWith("*.")) {
 		const suffix = pattern.slice(2);
-		return action.endsWith("." + suffix) || action.endsWith(suffix);
+		return action.endsWith(`.${suffix}`) || action.endsWith(suffix);
 	}
 
 	// Glob pattern: "*.search*"
 	if (pattern.includes("*")) {
 		const regex = new RegExp(
-			"^" + pattern.replace(/\./g, "\\.").replace(/\*/g, ".*") + "$",
+			`^${pattern.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`,
 		);
 		return regex.test(action);
 	}

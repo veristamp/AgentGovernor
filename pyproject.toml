@@ -12,6 +12,7 @@ dependencies = [
     "hf-xet>=1.2.0",
     "httpx>=0.28.1",
     "httpx-sse>=0.4.2",
+    "itsdangerous>=2.2.0",
     "jinja2>=3.1.6",
     "jsonschema>=4.25.1",
     "mcp-ui-server>=0.1.0",

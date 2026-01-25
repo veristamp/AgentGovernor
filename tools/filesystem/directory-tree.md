@@ -1,25 +1,25 @@
 # filesystem.directory-tree
 
-> Get a recursive tree view of files and directories as JSON.
+> Recursive directory tree as JSON. Supports excludePatterns globs, max_depth, max_nodes. Only works within allowed directories.
 
 ## Signature
 
 ```python
-await directory-tree(path: str, max_depth: float = 5, max_nodes: float = 5000)
+await directory-tree(path: str, excludePatterns: list = , max_depth: int = 5, max_nodes: int = 5000)
 ```
 
 ## Description
 
-Get a recursive tree view of files and directories as JSON.
-Includes 'name' and 'type', with 'children' for directories. Only works within allowed directories.
+Recursive directory tree as JSON. Supports excludePatterns globs, max_depth, max_nodes. Only works within allowed directories.
 
 ## Parameters
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `path` | string | ✓ | Path to the directory |
-| `max_depth` | number |  | Maximum depth of the tree |
-| `max_nodes` | number |  | Maximum number of nodes in the tree |
+| `path` | string | ✓ | - |
+| `excludePatterns` | array |  | - |
+| `max_depth` | integer |  | - |
+| `max_nodes` | integer |  | - |
 
 ## Usage Example
 

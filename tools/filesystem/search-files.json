@@ -2,29 +2,32 @@
 	"qualifiedName": "filesystem.search-files",
 	"serverPrefix": "filesystem",
 	"name": "search-files",
-	"originalName": "search-files",
-	"description": "Recursively search for files matching a pattern.\nCase-insensitive, returns full paths. Only works within allowed directories.",
+	"originalName": "search_files",
+	"description": "Recursively search for paths matching a glob pattern, relative to the search root. Only works within allowed directories.",
 	"schema": {
 		"type": "object",
 		"properties": {
 			"path": {
-				"type": "string",
-				"description": "Path to search in"
+				"type": "string"
 			},
 			"pattern": {
-				"type": "string",
-				"description": "Search pattern"
+				"type": "string"
 			},
-			"exclude_patterns": {
-				"default": [],
-				"description": "Patterns to exclude",
+			"excludePatterns": {
 				"type": "array",
 				"items": {
 					"type": "string"
-				}
+				},
+				"default": []
+			},
+			"limit": {
+				"type": "integer",
+				"exclusiveMinimum": 0,
+				"default": 5000
 			}
 		},
 		"required": ["path", "pattern"],
+		"additionalProperties": false,
 		"$schema": "http://json-schema.org/draft-07/schema#"
 	}
 }

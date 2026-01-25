@@ -7,10 +7,10 @@
  * This is GATE 2 of the double-gated security architecture.
  */
 
+import { resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { resolve } from "path";
 import { type AuditLogger, getAuditLogger } from "../audit";
 import { MCPResourceServer, type ValidationResult } from "../auth";
 import type { Identity, PolicyDecision } from "../policy";
@@ -45,6 +45,7 @@ export class MCPClientManager {
 	private index: CapabilityIndex;
 	private clients: Map<string, Client> = new Map();
 	private ready: boolean = false;
+	private configPath: string;
 
 	// Policy & Auth
 	private policyEngine: PolicyEngine | null = null;
@@ -60,7 +61,7 @@ export class MCPClientManager {
 
 		// Initialize config (will be loaded async in initialize)
 		this.config = { mcpServers: {} };
-		const configPath = opts.configPath;
+		this.configPath = opts.configPath ?? "mcp_servers.json";
 
 		this.index = new CapabilityIndex();
 		this.enablePolicy = opts.enablePolicy ?? false;
@@ -83,8 +84,7 @@ export class MCPClientManager {
 			this.resourceServer = new MCPResourceServer({ authServer, myAudience });
 		}
 
-		// Store config path for initialize
-		(this as any)._configPath = configPath;
+		// Config is loaded in initialize()
 	}
 
 	// ============== Lifecycle ==============
@@ -124,8 +124,7 @@ export class MCPClientManager {
 			}
 		}
 
-		const configPath = (this as any)._configPath;
-		this.config = await loadConfig(configPath);
+		this.config = await loadConfig(this.configPath);
 
 		const servers = Object.entries(this.config.mcpServers);
 		if (servers.length === 0) {
@@ -326,12 +325,12 @@ export class MCPClientManager {
 	/**
 	 * Check if an identity has been revoked.
 	 */
-	async isRevoked(identityId: string): Promise<boolean> {
+	async isRevoked(_identityId: string): Promise<boolean> {
 		if (!this.resourceServer) {
 			return false;
 		}
 		// Validate with active check to see if client is revoked
-		const result = await this.resourceServer.validateToken("", {
+		const _result = await this.resourceServer.validateToken("", {
 			requireActiveCheck: true,
 		});
 		// If we can't check, assume not revoked
@@ -447,7 +446,7 @@ export class MCPClientManager {
 			if (actionType === "tool") {
 				const callResult = await client.callTool({
 					name: baseName,
-					arguments: args,
+					arguments: (args ?? {}) as Record<string, unknown>,
 				});
 				result = this.formatToolResult(callResult);
 			} else if (actionType === "resource") {

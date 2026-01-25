@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { platform } from "os";
+import { platform } from "node:os";
 import { launchUnsafe } from "../sandbox/launcher";
 import { MCPClientManager } from "../src/mcp-client";
 import { createSocketServer } from "../src/socket-server";

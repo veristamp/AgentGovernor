@@ -5,9 +5,24 @@
 
 import type { PromptInfo, ResourceInfo, ToolInfo } from "./types";
 
-// Using generic type for Client to avoid SDK version compatibility issues
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type MCPClient = any;
+// Minimal client surface required by MCPClientManager.executeAction.
+export interface MCPClient {
+	callTool: (args: {
+		name: string;
+		arguments?: Record<string, unknown>;
+		_meta?: {
+			[x: string]: unknown;
+			progressToken?: string | number;
+			"io.modelcontextprotocol/related-task"?: { taskId: string };
+		};
+		task?: { ttl?: number };
+	}) => Promise<unknown>;
+	readResource: (args: { uri: string }) => Promise<{ contents: unknown }>;
+	getPrompt: (args: {
+		name: string;
+		arguments?: Record<string, string>;
+	}) => Promise<{ messages: unknown }>;
+}
 
 export class CapabilityIndex {
 	private prefixToClient: Map<string, MCPClient> = new Map();

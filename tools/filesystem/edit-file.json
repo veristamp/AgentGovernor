@@ -2,14 +2,13 @@
 	"qualifiedName": "filesystem.edit-file",
 	"serverPrefix": "filesystem",
 	"name": "edit-file",
-	"originalName": "edit-file",
-	"description": "Make line-based edits to a text file with flexible matching.\nReturns a git-style diff and a UI preview.",
+	"originalName": "edit_file",
+	"description": "Structured replace edits for text files. Returns a unified diff. Use dry_run=true first.",
 	"schema": {
 		"type": "object",
 		"properties": {
 			"path": {
-				"type": "string",
-				"description": "Path to the file"
+				"type": "string"
 			},
 			"edits": {
 				"type": "array",
@@ -17,25 +16,28 @@
 					"type": "object",
 					"properties": {
 						"oldText": {
-							"type": "string",
-							"description": "Text to replace"
+							"type": "string"
 						},
 						"newText": {
-							"type": "string",
-							"description": "New text"
+							"type": "string"
 						}
 					},
-					"required": ["oldText", "newText"]
+					"required": ["oldText", "newText"],
+					"additionalProperties": false
 				},
-				"description": "List of edit operations"
+				"minItems": 1
 			},
 			"dry_run": {
-				"default": true,
-				"description": "Whether to perform a dry run",
-				"type": "boolean"
+				"type": "boolean",
+				"default": true
+			},
+			"require_all": {
+				"type": "boolean",
+				"default": true
 			}
 		},
 		"required": ["path", "edits"],
+		"additionalProperties": false,
 		"$schema": "http://json-schema.org/draft-07/schema#"
 	}
 }

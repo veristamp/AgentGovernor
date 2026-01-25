@@ -38,6 +38,7 @@ import type {
 	ClientStatus,
 	ClientStatusResponse,
 	IntrospectionResponse,
+	JWTClaims,
 	MCPResourceServerConfig,
 	ValidationResult,
 } from "./types";
@@ -148,7 +149,7 @@ export class MCPResourceServer {
 		requireActiveCheck: boolean = false,
 		verifySignature: boolean = false,
 	): Promise<ValidationResult> {
-		let claims;
+		let claims: JWTClaims;
 
 		// Optionally verify signature using JWKS
 		if (verifySignature) {
@@ -164,8 +165,8 @@ export class MCPResourceServer {
 			claims = verifyResult.claims;
 		} else {
 			// Just decode without verification (for trusted internal use)
-			claims = decodeJWT(token);
-			if (!claims) {
+			const decoded = decodeJWT(token);
+			if (!decoded) {
 				return {
 					valid: false,
 					scopes: [],
@@ -173,6 +174,7 @@ export class MCPResourceServer {
 					errorCode: "invalid_token",
 				};
 			}
+			claims = decoded;
 		}
 
 		// Check expiration
@@ -397,7 +399,7 @@ export class MCPResourceServer {
 			headers["x-api-key"] = this.adminApiKey;
 		}
 		if (this.adminSessionCookie) {
-			headers["Cookie"] = this.adminSessionCookie;
+			headers.Cookie = this.adminSessionCookie;
 		}
 
 		try {

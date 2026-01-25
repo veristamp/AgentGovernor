@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
-import { join, resolve } from "path";
-import type { SkillSearchResult, SkillSummary } from "./registry";
+import { join, resolve } from "node:path";
+import type { SkillSummary } from "./registry";
 import { SkillRegistry } from "./registry";
 import type { GcmRegistrySearchResult, GcmSignature } from "./schema";
 
@@ -65,7 +65,7 @@ export class GcmRegistrySearch {
 					}
 				}
 			}
-		} catch (e) {
+		} catch (_e) {
 			// Directory might not exist
 		}
 	}
@@ -92,7 +92,7 @@ export class GcmRegistrySearch {
 							regex.test(fn.name) || (fn.summary && regex.test(fn.summary)),
 					),
 			);
-		} catch (e) {
+		} catch (_e) {
 			// Fallback to simple inclusion if regex fails
 			matches = this.signatures.filter(
 				(sig) =>

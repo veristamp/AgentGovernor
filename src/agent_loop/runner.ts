@@ -54,7 +54,7 @@ function coerceToModelResponse(value: unknown): AgentLoopModelResponse | null {
 	}
 
 	if (typeof value !== "object") return null;
-	const obj = value as any;
+	const obj = value as Record<string, unknown>;
 
 	if (obj.type === "tool_call" && typeof obj.name === "string") {
 		return {
@@ -72,11 +72,15 @@ function coerceToModelResponse(value: unknown): AgentLoopModelResponse | null {
 		return { type: "final", result: obj.result } as AgentLoopModelResponse;
 	}
 
+	const resultObj =
+		typeof obj.result === "object" && obj.result
+			? (obj.result as Record<string, unknown>)
+			: null;
 	const code =
 		typeof obj.code === "string"
 			? obj.code
-			: typeof obj.result?.code === "string"
-				? obj.result.code
+			: resultObj && typeof resultObj.code === "string"
+				? resultObj.code
 				: null;
 	if (code && typeof code === "string" && code.trim()) {
 		return {
@@ -148,7 +152,7 @@ export async function runAgentLoop<TFinal>(params: {
 				throw new Error("Unrecognized JSON shape");
 			}
 			parsed = coerced;
-		} catch (e) {
+		} catch (_e) {
 			const python = extractPythonCode(raw);
 			if (python) {
 				parsed = {
