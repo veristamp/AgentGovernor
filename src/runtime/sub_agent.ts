@@ -4,11 +4,9 @@ import type { PolicyEngine } from "../core/policy/engine";
 import { createAgentRuntime, type RuntimeContext } from "./factory";
 import { runGovernedLoop } from "./loop";
 import type { RuntimeIdentity } from "./middleware";
-import type { MissionRuntime } from "./mission";
 import type { TraceEvent } from "./trace";
 
 export interface SubAgentRunOptions {
-	mission: MissionRuntime;
 	identity: RuntimeIdentity;
 	mcp: MCPClientManager;
 	policy: PolicyEngine;
@@ -41,7 +39,7 @@ export async function runSubAgent<TFinal = string>(
 		{
 			maxIterations: options.maxIterations ?? 10,
 			runId,
-			sessionId: options.mission.sessionId,
+			sessionId: options.identity.sessionId,
 		},
 	);
 }

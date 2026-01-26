@@ -39,14 +39,6 @@
 		"timeout": 5.0,
 		"disabled": false
 	},
-	"Skills": {
-		"connection_type": "stdio",
-		"command": "bun",
-		"args": ["run", "mcp-servers/skills/src/index.ts"],
-		"cwd": ".",
-		"timeout": 5.0,
-		"disabled": false
-	},
 	"context7": {
 		"command": "npx",
 		"args": ["-y", "@upstash/context7-mcp@latest"],

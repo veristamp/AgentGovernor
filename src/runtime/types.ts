@@ -30,6 +30,8 @@ export interface AgentLoopToolContext {
 	orgId?: string;
 	roles?: string[];
 	scopes?: string[];
+	missionId?: string;
+	sessionId?: string;
 }
 
 export interface AgentLoopRunOptions {

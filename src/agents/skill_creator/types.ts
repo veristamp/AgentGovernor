@@ -70,6 +70,21 @@ export interface SkillCreatorSession {
 	questions: string[];
 }
 
+export interface SkillDraftResponse {
+	skill_id: string;
+	summary: string;
+	interface: string[];
+	bindings: Record<string, string>;
+	fanout_tools: string[];
+	code: string;
+	examples: Array<{
+		title?: string;
+		description?: string;
+		code: string;
+	}>;
+	dependencies?: string[];
+}
+
 export type SkillCreatorEvent =
 	| { type: "question"; message: string }
 	| { type: "tool_selection"; tools: ToolDescriptor[] }

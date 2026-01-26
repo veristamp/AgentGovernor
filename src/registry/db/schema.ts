@@ -1,4 +1,14 @@
-import { customType, index, jsonb, pgSchema, text } from "drizzle-orm/pg-core";
+import {
+	bigint,
+	customType,
+	doublePrecision,
+	index,
+	integer,
+	jsonb,
+	pgSchema,
+	text,
+	timestamp,
+} from "drizzle-orm/pg-core";
 
 export const gcmSchema = pgSchema("gcm_registry");
 
@@ -7,6 +17,85 @@ const tsvector = customType<{ data: string }>({
 		return "tsvector";
 	},
 });
+
+// =============================================================================
+// UNIFIED GRAPH SCHEMA (Mirroring Python kb.db.schema)
+// =============================================================================
+
+// The Hard Graph (Skeleton)
+export const nodes = gcmSchema.table(
+	"nodes",
+	{
+		id: bigint("id", { mode: "number" }).primaryKey(), // Stable ID (Qdrant compatible)
+		docId: integer("doc_id"), // FK to documents.id
+		docUrl: text("doc_url").notNull(),
+		type: text("type").notNull(), // CHUNK, SECTION, CODE, TABLE, TOOL, SKILL, WORKFLOW
+		content: text("content"),
+		parentId: bigint("parent_id", { mode: "number" }),
+		prevId: bigint("prev_id", { mode: "number" }),
+		nextId: bigint("next_id", { mode: "number" }),
+		pageIdx: integer("page_idx"),
+		sectionPath: text("section_path"),
+		meta: jsonb("meta"), // language, lines, etc.
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(table) => ({
+		docTypeIdx: index("idx_nodes_doc_type").on(table.docUrl, table.type),
+		sectionPathIdx: index("idx_nodes_section_path_trgm").using(
+			"gin",
+			table.sectionPath,
+		), // Requires pg_trgm
+	}),
+);
+
+// Global Concepts (Hubs)
+export const globalConcepts = gcmSchema.table("global_concepts", {
+	id: integer("id").primaryKey(),
+	name: text("name").unique().notNull(),
+	docCount: integer("doc_count").default(0),
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Edges (Nerves)
+export const edges = gcmSchema.table(
+	"edges",
+	{
+		id: bigint("id", { mode: "number" }).primaryKey(),
+		sourceId: bigint("source_id", { mode: "number" }).notNull(),
+		targetId: bigint("target_id", { mode: "number" }).notNull(), // Concept ID or Node ID
+		edgeType: text("edge_type").notNull(), // MENTIONS, REFERS_TO, FOLLOWS, CHILD_OF, PROVIDES, DEPENDS_ON
+		weight: doublePrecision("weight").default(1.0),
+	},
+	(table) => ({
+		sourceIdx: index("idx_edges_source").on(table.sourceId),
+		targetTypeIdx: index("idx_edges_target_type").on(
+			table.targetId,
+			table.edgeType,
+		),
+		uniqueLinkIdx: index("idx_edges_unique_link").on(
+			table.sourceId,
+			table.targetId,
+			table.edgeType,
+		), // Should be unique constraint ideally
+	}),
+);
+
+// Documents Registry
+export const documents = gcmSchema.table("documents", {
+	id: integer("id").primaryKey(),
+	filePath: text("file_path").unique().notNull(),
+	fileType: text("file_type"),
+	checksum: text("checksum"),
+	totalChunks: integer("total_chunks").default(0),
+	lastProcessedAt: timestamp("last_processed_at"),
+	lastHarvestedAt: timestamp("last_harvested_at"),
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+	syncStatus: text("sync_status").default("stale"),
+});
+
+// =============================================================================
+// LEGACY REGISTRY TABLES (To be deprecated or mapped to Nodes)
+// =============================================================================
 
 // Tools Table
 export const tools = gcmSchema.table(

@@ -1,6 +1,7 @@
 export type AgentOutputFormat = "python";
 
 export interface AgentIdentityScope {
+	id?: string;
 	orgId?: string;
 	roles: string[];
 	scopes: string[];

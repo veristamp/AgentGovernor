@@ -9,6 +9,7 @@ import {
 	createMissionRuntime,
 } from "../../runtime/mission";
 import { runSubAgent } from "../../runtime/sub_agent";
+import { SkillCreatorAgent } from "../skill_creator/skill_creator_agent";
 import type { LlmClient } from "./llm_client";
 import { SkillCatalog } from "./skill_catalog";
 import type { AgentRequest, AgentResult } from "./types";
@@ -22,6 +23,9 @@ const ORCHESTRATOR_TOOLS = {
 	"skills.search": {
 		description:
 			"Search for skills/capabilities if no direct workflow is found",
+	},
+	"skill.create": {
+		description: "Create a new reusable skill (Python code) to solve a task.",
 	},
 	"scout.spawn": {
 		description:
@@ -50,6 +54,7 @@ export class OrchestratorAgent {
 		const { createOpenAI } = await import("@ai-sdk/openai");
 		const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 		const orchModel = openai(this.options.model);
+		const mcp = await getMCPClientManager();
 
 		// Tools implementation
 		const tools: any = {
@@ -63,6 +68,31 @@ export class OrchestratorAgent {
 			},
 			"skills.search": async ({ query }: { query: string }) => {
 				return await this.catalog.search(query, request.identity, 5);
+			},
+			"skill.create": async ({ goal }: { goal: string }) => {
+				console.log(`[Orchestrator] Spawning Skill Creator for: ${goal}`);
+				const creator = new SkillCreatorAgent(
+					{ llm: this.options.llm },
+					{ model: this.options.model },
+				);
+				// Pass the parent request context so the skill is owned by the same user/mission
+				const result = await creator.run(
+					{
+						goal,
+						requester: {
+							id: request.identity.id ?? "unknown-orchestrator",
+							roles: request.identity.roles,
+							orgId: request.identity.orgId,
+							missionId: request.identity.missionId,
+							sessionId: request.identity.sessionId,
+						},
+					},
+					{ mcp },
+				);
+				return {
+					skillId: result.skillRef,
+					summary: result.draft.summary,
+				};
 			},
 			"scout.spawn": async ({
 				goal,
@@ -79,13 +109,17 @@ export class OrchestratorAgent {
 
 		// 2. Orchestrator Loop (using Vercel AI SDK native loop)
 		const systemPrompt = `You are the Orchestrator. Your job is to route the user's request to the best execution path.
-1. SEARCH first: Check if a workflow exists for the goal.
-2. IF MATCH: Return the workflow code (you can adapt it slightly if parameters differ).
-3. IF NO MATCH: Search for skills, then SPAWN a Scout to solve it.
-4. RETURN the final code or result.
 
-Do NOT write complex code yourself. Delegate to 'scout.spawn' for new logic.
-`;
+STRATEGY:
+1. First, CALL 'searchWorkflows' to check for existing workflows.
+2. IF workflows found: Return the code.
+3. IF NO workflows found (empty result):
+   - CALL 'searchSkills'.
+4. IF NO skills found (empty result):
+   - CALL 'skill.create' to generate a new skill.
+   - OR CALL 'scout.spawn' if the task is fuzzy/exploratory.
+
+CRITICAL: You MUST keep calling tools until you have a solution. Do not stop at an empty search result.`;
 
 		// Use 'any' cast to bypass temporary TS issues with AI SDK 4.0 types in this environment
 		const genOptions: any = {
@@ -108,6 +142,13 @@ Do NOT write complex code yourself. Delegate to 'scout.spawn' for new logic.
 						limit: z.number().optional().describe("Max number of results"),
 					}),
 					execute: tools["skills.search"],
+				}),
+				createSkill: tool({
+					description: ORCHESTRATOR_TOOLS["skill.create"].description,
+					inputSchema: z.object({
+						goal: z.string().describe("Goal for the new skill"),
+					}),
+					execute: tools["skill.create"],
 				}),
 				spawnScout: tool({
 					description: ORCHESTRATOR_TOOLS["scout.spawn"].description,
@@ -134,6 +175,37 @@ Do NOT write complex code yourself. Delegate to 'scout.spawn' for new logic.
 		const result = await generateText(genOptions);
 		const toolResults: any[] = result.toolResults || [];
 
+		// Check if we created a skill
+		const skillTool = toolResults.find((tr) => tr.toolName === "createSkill");
+		if (skillTool) {
+			const output = skillTool.output ?? skillTool.result;
+			return {
+				code: `Created Skill: ${output.skillId}\nSummary: ${output.summary}`,
+				selectedSkills: [output.skillId],
+				prompt: request.goal,
+				repairAttempts: 0,
+				plan: "Created new skill on demand",
+			};
+		}
+
+		// Check if we spawned a scout
+		const scoutTool = toolResults.find((tr) => tr.toolName === "spawnScout");
+		if (scoutTool) {
+			const output = scoutTool.output ?? scoutTool.result;
+			const scoutText =
+				typeof output.scout_result === "string"
+					? output.scout_result
+					: JSON.stringify(output.scout_result, null, 2);
+			return {
+				code: scoutText || "# No output from scout",
+				selectedSkills: [],
+				prompt: request.goal,
+				repairAttempts: 0,
+				plan: "Delegated to Scout",
+			};
+		}
+
+		// Check for workflow match
 		const workflowTool = toolResults.find(
 			(tr) => tr.toolName === "searchWorkflows",
 		);
@@ -142,7 +214,8 @@ Do NOT write complex code yourself. Delegate to 'scout.spawn' for new logic.
 			? workflowOutput.length > 0
 			: !!workflowOutput;
 
-		if (!hasWorkflowMatch) {
+		if (!hasWorkflowMatch && toolResults.length === 0) {
+			// Only fallback if NO tools were used effectively
 			const scout = await this.spawnScout(
 				"Summarize authentication methods implemented in src/core/auth",
 				"Inspect source files under src/core/auth and summarize auth mechanisms.",
@@ -202,14 +275,18 @@ Do NOT write complex code yourself. Delegate to 'scout.spawn' for new logic.
 			...parentRequest.identity,
 			id: `orchestrator-${Date.now()}`,
 			type: "agent",
-			missionId: parentRequest.identity.missionId,
-			sessionId: parentRequest.identity.sessionId,
+			missionId: parentRequest.identity.missionId!,
+			sessionId: parentRequest.identity.sessionId!,
 		};
-		const mission = createMissionRuntime(baseIdentity);
-		const runtimeIdentity = createChildIdentity(mission, {
+		// const mission = createMissionRuntime(baseIdentity);
+		// const runtimeIdentity = createChildIdentity(mission, {
+		// 	id: `scout-${Date.now()}`,
+		// 	type: "agent",
+		// });
+		const runtimeIdentity: RuntimeIdentity = {
+			...baseIdentity,
 			id: `scout-${Date.now()}`,
-			type: "agent",
-		});
+		};
 
 		// 2. Load Requested Tools
 		const allTools = Array.from(mcp.getCapabilities().tools.keys());
@@ -231,7 +308,7 @@ Use tools to inspect files and return a concise summary (not code).`;
 
 		const runId = `scout-run-${Date.now()}`;
 		const { final } = await runSubAgent<string>({
-			mission,
+			// mission,
 			identity: runtimeIdentity,
 			mcp,
 			policy: this.options.policy,

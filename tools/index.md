@@ -1,6 +1,6 @@
 # MCP Tools Registry
 
-Total: 44 tools from 8 servers.
+Total: 41 tools from 7 servers.
 
 ## Servers
 
@@ -10,5 +10,4 @@ Total: 44 tools from 8 servers.
 - [`filesystem`](./filesystem/index.md) (16 tools)
 - [`memory`](./memory/index.md) (9 tools)
 - [`modelcontextprotocol-python-sdk`](./modelcontextprotocol-python-sdk/index.md) (6 tools)
-- [`skills`](./skills/index.md) (3 tools)
 - [`terminal`](./terminal/index.md) (1 tools)

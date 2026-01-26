@@ -14,9 +14,9 @@
 import { platform } from "node:os";
 import { createInterface } from "node:readline/promises";
 import {
-	isNsJailAvailable,
-	launchSandbox,
-	launchUnsafe,
+  isNsJailAvailable,
+  launchSandbox,
+  launchUnsafe,
 } from "../../sandbox/launcher";
 import { LlmClient, WorkflowAgent } from "../agents/main";
 import { SkillCreatorAgent } from "../agents/skill_creator";
@@ -26,89 +26,89 @@ import { createSocketServer, type SocketServer } from "../core/socket";
 
 // Windows uses named pipes, Unix uses file sockets
 const getDefaultSocketPath = () => {
-	if (platform() === "win32") {
-		return "\\\\.\\pipe\\mcp-workflow";
-	}
-	return "/tmp/mcp-workflow.sock";
+  if (platform() === "win32") {
+    return "\\\\.\\pipe\\mcp-workflow";
+  }
+  return "/tmp/mcp-workflow.sock";
 };
 
 const SOCKET_PATH = process.env.MCP_SOCKET_PATH || getDefaultSocketPath();
 
 interface GovernedCodeMode {
-	manager: MCPClientManager;
-	server: SocketServer;
+  manager: MCPClientManager;
+  server: SocketServer;
 }
 
 /**
  * Initialize the Governed Code Mode system
  */
 export async function initialize(
-	configPath?: string,
+  configPath?: string,
 ): Promise<GovernedCodeMode> {
-	console.log("[GCM] Initializing Governed Code Mode...");
+  console.log("[GCM] Initializing Governed Code Mode...");
 
-	// 1. Initialize MCP Client Manager
-	const manager = new MCPClientManager(configPath);
-	await manager.initialize();
+  // 1. Initialize MCP Client Manager
+  const manager = new MCPClientManager(configPath);
+  await manager.initialize();
 
-	// 2. Start Unix socket server
-	const server = await createSocketServer(SOCKET_PATH, manager);
+  // 2. Start Unix socket server
+  const server = await createSocketServer(SOCKET_PATH, manager);
 
-	console.log("[GCM] Ready. Socket:", SOCKET_PATH);
-	console.log("[GCM] Available tools:", manager.getToolNames().length);
+  console.log("[GCM] Ready. Socket:", SOCKET_PATH);
+  console.log("[GCM] Available tools:", manager.getToolNames().length);
 
-	return { manager, server };
+  return { manager, server };
 }
 
 /**
  * Execute a workflow in the sandbox
  */
 export async function executeWorkflow(
-	_gcm: GovernedCodeMode,
-	code: string,
+  _gcm: GovernedCodeMode,
+  code: string,
 ): Promise<unknown> {
-	console.log("[GCM] Executing workflow...");
+  console.log("[GCM] Executing workflow...");
 
-	// Check if NsJail is available
-	const hasNsJail = await isNsJailAvailable();
+  // Check if NsJail is available
+  const hasNsJail = await isNsJailAvailable();
 
-	const launcher = hasNsJail ? launchSandbox : launchUnsafe;
+  const launcher = hasNsJail ? launchSandbox : launchUnsafe;
 
-	const result = await launcher({
-		code,
-		socketPath: SOCKET_PATH,
-		timeout: 60,
-		memoryLimit: 512,
-		cpuLimit: 10,
-	});
+  const result = await launcher({
+    code,
+    socketPath: SOCKET_PATH,
+    timeout: 60,
+    memoryLimit: 512,
+    cpuLimit: 10,
+  });
 
-	console.log(`[GCM] Workflow completed in ${result.executionTimeMs}ms`);
+  console.log(`[GCM] Workflow completed in ${result.executionTimeMs}ms`);
 
-	if (result.exitCode !== 0) {
-		console.error("[GCM] Stderr:", result.stderr);
-		throw new Error(`Workflow failed with exit code ${result.exitCode}`);
-	}
+  if (result.exitCode !== 0) {
+    console.error("[GCM] Stderr:", result.stderr);
+    throw new Error(`Workflow failed with exit code ${result.exitCode}`);
+  }
 
-	return result.stdout;
+  return result.stdout;
 }
 
 /**
  * Shutdown the system
  */
 export async function shutdown(gcm: GovernedCodeMode): Promise<void> {
-	console.log("[GCM] Shutting down...");
-	await gcm.server.stop();
-	await gcm.manager.close();
-	console.log("[GCM] Shutdown complete");
+  console.log("[GCM] Shutting down...");
+  await gcm.server.stop();
+  await gcm.manager.close();
+  console.log("[GCM] Shutdown complete");
 }
 
 // ==================== CLI ====================
 
 async function main() {
-	const args = process.argv.slice(2);
+  const args = process.argv.slice(2);
 
-	if (args.includes("--help") || args.includes("-h")) {
-		console.log(`
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(`
 Governed Code Mode - Secure AI Agent Execution
 
 Usage:
@@ -138,175 +138,181 @@ Execute Mode:
 	Workflow Creation Mode:
 	  bun run src/cli/index.ts --workflow-create "Your goal" --role mcp:docs-curator --org org_123
 `);
-		process.exit(0);
-	}
+    process.exit(0);
+  }
 
-	// Parse arguments
-	let configPath = "mcp_servers.json";
-	let executeFile: string | null = null;
-	let skillGoal: string | null = null;
-	let workflowGoal: string | null = null;
-	const skillRoles: string[] = [];
-	let skillOrg: string | undefined;
-	let skillTeam: string | undefined;
+  // Parse arguments
+  let configPath = "mcp_servers.json";
+  let executeFile: string | null = null;
+  let skillGoal: string | null = null;
+  let workflowGoal: string | null = null;
+  const skillRoles: string[] = [];
+  let skillOrg: string | undefined;
+  let skillTeam: string | undefined;
 
-	for (let i = 0; i < args.length; i++) {
-		if (args[i] === "--config" && args[i + 1]) {
-			configPath = args[++i] as string;
-		} else if (args[i] === "--execute" && args[i + 1]) {
-			executeFile = args[++i] as string;
-		} else if (args[i] === "--socket" && args[i + 1]) {
-			process.env.MCP_SOCKET_PATH = args[++i] as string;
-		} else if (args[i] === "--skill-create" && args[i + 1]) {
-			skillGoal = args[++i] as string;
-		} else if (args[i] === "--workflow-create" && args[i + 1]) {
-			workflowGoal = args[++i] as string;
-		} else if (args[i] === "--role" && args[i + 1]) {
-			skillRoles.push(args[++i] as string);
-		} else if (args[i] === "--org" && args[i + 1]) {
-			skillOrg = args[++i] as string;
-		} else if (args[i] === "--team" && args[i + 1]) {
-			skillTeam = args[++i] as string;
-		}
-	}
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--config" && args[i + 1]) {
+      configPath = args[++i] as string;
+    } else if (args[i] === "--execute" && args[i + 1]) {
+      executeFile = args[++i] as string;
+    } else if (args[i] === "--socket" && args[i + 1]) {
+      process.env.MCP_SOCKET_PATH = args[++i] as string;
+    } else if (args[i] === "--skill-create" && args[i + 1]) {
+      skillGoal = args[++i] as string;
+    } else if (args[i] === "--workflow-create" && args[i + 1]) {
+      workflowGoal = args[++i] as string;
+    } else if (args[i] === "--role" && args[i + 1]) {
+      skillRoles.push(args[++i] as string);
+    } else if (args[i] === "--org" && args[i + 1]) {
+      skillOrg = args[++i] as string;
+    } else if (args[i] === "--team" && args[i + 1]) {
+      skillTeam = args[++i] as string;
+    }
+  }
 
-	const llmBase =
-		process.env.LLM_API_BASE ||
-		process.env.OPENAI_API_BASE ||
-		process.env.OPENAI_BASE_URL ||
-		"https://api.openai.com/v1";
-	const llmKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || "";
-	const llmModel = process.env.LLM_MODEL_NAME || "gpt-4o-mini";
+  const llmBase =
+    process.env.LLM_API_BASE ||
+    process.env.OPENAI_API_BASE ||
+    process.env.OPENAI_BASE_URL ||
+    "https://api.openai.com/v1";
+  const llmKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || "";
+  const llmModel = process.env.LLM_MODEL_NAME || "gpt-4o-mini";
 
-	if (skillGoal) {
-		const policy = new PolicyEngine();
-		await policy.loadRulesFromFile("policy/policy_rules.json");
-		const agent = new SkillCreatorAgent(
-			{ llm: new LlmClient(llmBase, llmKey), policy },
-			{
-				model: llmModel,
-				toolsPath: "tools_schema.json",
-				skillsDir: "skills",
-				policyFilePath: "policy/policy_rules.json",
-				rolePermissionsPath: "policy/role_permissions.json",
-				maxRepairAttempts: 3,
-			},
-		);
-		const result = await agent.run({
-			goal: skillGoal,
-			constraints: [],
-			requester: {
-				id: "admin",
-				roles: ["mcp:admin", ...skillRoles],
-				orgId: skillOrg,
-				teamId: skillTeam,
-			},
-		});
-		console.log(
-			"[SkillCreator] Created",
-			result.skillRef,
-			"in",
-			result.skillDir,
-		);
+  if (skillGoal) {
+    const policy = new PolicyEngine();
+    await policy.loadRulesFromFile("policy/policy_rules.json");
+    const mcp = new MCPClientManager(configPath);
+    await mcp.initialize();
+    const agent = new SkillCreatorAgent(
+      { llm: new LlmClient(llmBase, llmKey), policy },
+      {
+        model: llmModel,
+        toolsPath: "tools_schema.json",
+        skillsDir: "skills",
+        policyFilePath: "policy/policy_rules.json",
+        rolePermissionsPath: "policy/role_permissions.json",
+        maxRepairAttempts: 3,
+      },
+    );
+    const result = await agent.run(
+      {
+        goal: skillGoal,
+        constraints: [],
+        requester: {
+          id: "admin",
+          roles: ["mcp:admin", ...skillRoles],
+          orgId: skillOrg,
+          teamId: skillTeam,
+        },
+      },
+      { mcp },
+    );
+    await mcp.close();
+    console.log(
+      "[SkillCreator] Created",
+      result.skillRef,
+      "in",
+      result.skillDir,
+    );
 
-		if (result.abacProposal) {
-			console.log("\n[SkillCreator] ABAC proposal (requires human approval):");
-			console.log(JSON.stringify(result.abacProposal, null, 2));
+    if (result.abacProposal) {
+      console.log("\n[SkillCreator] ABAC proposal (requires human approval):");
+      console.log(JSON.stringify(result.abacProposal, null, 2));
 
-			const rl = createInterface({
-				input: process.stdin,
-				output: process.stdout,
-			});
-			const answer = await rl.question("Approve ABAC proposal? [y/N]: ");
-			rl.close();
+      const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      const answer = await rl.question("Approve ABAC proposal? [y/N]: ");
+      rl.close();
 
-			if (answer.trim().toLowerCase() === "y") {
-				const applied = await applyAbacProposalToOrgPolicy(
-					result.abacProposal,
-					skillOrg,
-				);
-				if (applied.applied) {
-					console.log(
-						`[SkillCreator] ABAC proposal applied to ${applied.path}`,
-					);
-				} else {
-					console.log(
-						`[SkillCreator] ABAC proposal already present in ${applied.path}`,
-					);
-				}
-			} else {
-				console.log("[SkillCreator] ABAC proposal not applied.");
-			}
-		}
+      if (answer.trim().toLowerCase() === "y") {
+        const applied = await applyAbacProposalToOrgPolicy(
+          result.abacProposal,
+          skillOrg,
+        );
+        if (applied.applied) {
+          console.log(
+            `[SkillCreator] ABAC proposal applied to ${applied.path}`,
+          );
+        } else {
+          console.log(
+            `[SkillCreator] ABAC proposal already present in ${applied.path}`,
+          );
+        }
+      } else {
+        console.log("[SkillCreator] ABAC proposal not applied.");
+      }
+    }
 
-		process.exit(0);
-	}
+    process.exit(0);
+  }
 
-	if (workflowGoal) {
-		const policy = new PolicyEngine();
-		await policy.loadRulesFromFile("policy/policy_rules.json");
-		const agent = new WorkflowAgent({
-			llm: new LlmClient(llmBase, llmKey),
-			policy,
-			model: llmModel,
-			temperature: 0.2,
-			maxTokens: 2200,
-			maxRepairAttempts: 3,
-		});
-		const result = await agent.run({
-			goal: workflowGoal,
-			identity: {
-				roles: ["mcp:admin", ...skillRoles],
-				scopes: [],
-				orgId: skillOrg,
-			},
-		});
-		console.error("[WorkflowAgent] Generated workflow:");
-		console.log(result.code);
-		process.exit(0);
-	}
+  if (workflowGoal) {
+    const policy = new PolicyEngine();
+    await policy.loadRulesFromFile("policy/policy_rules.json");
+    const agent = new WorkflowAgent({
+      llm: new LlmClient(llmBase, llmKey),
+      policy,
+      model: llmModel,
+      temperature: 0.2,
+      maxTokens: 2200,
+      maxRepairAttempts: 3,
+    });
+    const result = await agent.run({
+      goal: workflowGoal,
+      identity: {
+        roles: ["mcp:admin", ...skillRoles],
+        scopes: [],
+        orgId: skillOrg,
+      },
+    });
+    console.error("[WorkflowAgent] Generated workflow:");
+    console.log(result.code);
+    process.exit(0);
+  }
 
-	// Initialize
-	const gcm = await initialize(configPath);
+  // Initialize
+  const gcm = await initialize(configPath);
 
-	// Handle signals
-	process.on("SIGINT", async () => {
-		await shutdown(gcm);
-		process.exit(0);
-	});
+  // Handle signals
+  process.on("SIGINT", async () => {
+    await shutdown(gcm);
+    process.exit(0);
+  });
 
-	process.on("SIGTERM", async () => {
-		await shutdown(gcm);
-		process.exit(0);
-	});
+  process.on("SIGTERM", async () => {
+    await shutdown(gcm);
+    process.exit(0);
+  });
 
-	if (executeFile) {
-		// Execute mode
-		if (!(await Bun.file(executeFile).exists())) {
-			console.error(`File not found: ${executeFile}`);
-			process.exit(1);
-		}
+  if (executeFile) {
+    // Execute mode
+    if (!(await Bun.file(executeFile).exists())) {
+      console.error(`File not found: ${executeFile}`);
+      process.exit(1);
+    }
 
-		const code = await Bun.file(executeFile).text();
+    const code = await Bun.file(executeFile).text();
 
-		try {
-			const result = await executeWorkflow(gcm, code);
-			console.log("[GCM] Result:", result);
-			await shutdown(gcm);
-			process.exit(0);
-		} catch (e) {
-			console.error("[GCM] Error:", e);
-			await shutdown(gcm);
-			process.exit(1);
-		}
-	} else {
-		// Server mode - keep running
-		console.log("[GCM] Running in server mode. Press Ctrl+C to stop.");
-	}
+    try {
+      const result = await executeWorkflow(gcm, code);
+      console.log("[GCM] Result:", result);
+      await shutdown(gcm);
+      process.exit(0);
+    } catch (e) {
+      console.error("[GCM] Error:", e);
+      await shutdown(gcm);
+      process.exit(1);
+    }
+  } else {
+    // Server mode - keep running
+    console.log("[GCM] Running in server mode. Press Ctrl+C to stop.");
+  }
 }
 
 // Run if main module
 main().catch((e) => {
-	console.error("[GCM] Fatal error:", e);
-	process.exit(1);
+  console.error("[GCM] Fatal error:", e);
+  process.exit(1);
 });

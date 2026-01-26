@@ -133,9 +133,16 @@ export class MCPClientManager {
 			return;
 		}
 
-		const results = await Promise.allSettled(
-			servers.map(([name, cfg]) => this.connectOne(name, cfg)),
-		);
+		const results: PromiseSettledResult<void>[] = [];
+		const BATCH_SIZE = 5;
+
+		for (let i = 0; i < servers.length; i += BATCH_SIZE) {
+			const batch = servers.slice(i, i + BATCH_SIZE);
+			const batchResults = await Promise.allSettled(
+				batch.map(([name, cfg]) => this.connectOne(name, cfg)),
+			);
+			results.push(...batchResults);
+		}
 
 		const connected = results.filter((r) => r.status === "fulfilled").length;
 		console.log(
@@ -147,14 +154,20 @@ export class MCPClientManager {
 
 	async close(): Promise<void> {
 		console.log("[MCPClientManager] Closing connections...");
-		for (const [name, client] of this.clients) {
-			try {
-				await client.close();
-				console.log(`[MCPClientManager] Closed: ${name}`);
-			} catch (e) {
-				console.warn(`[MCPClientManager] Error closing ${name}:`, e);
-			}
-		}
+		const closePromises = Array.from(this.clients.entries()).map(
+			async ([name, client]) => {
+				try {
+					await this.withTimeout(async () => {
+						await client.close();
+					}, 2000); // 2 second timeout per client
+					console.log(`[MCPClientManager] Closed: ${name}`);
+				} catch (e) {
+					console.warn(`[MCPClientManager] Error closing ${name}:`, e);
+				}
+			},
+		);
+
+		await Promise.allSettled(closePromises);
 		this.clients.clear();
 		this.ready = false;
 	}
@@ -167,65 +180,98 @@ export class MCPClientManager {
 	): Promise<void> {
 		console.log(`[MCPClientManager] Connecting to ${serverKey}...`);
 
+		let client: Client | undefined;
+		const timeoutMs = (cfg.timeout ?? 60) * 1000;
+
 		try {
-			let client: Client;
+			await this.withTimeout(async () => {
+				if (cfg.type === "stdio") {
+					client = await this.connectStdio(serverKey, cfg);
+				} else if (cfg.type === "sse" || cfg.type === "streamable_http") {
+					client = await this.connectStreamableHTTP(serverKey, cfg);
+				} else {
+					throw new Error(`Unknown connection type: ${cfg.type}`);
+				}
 
-			if (cfg.type === "stdio") {
-				client = await this.connectStdio(serverKey, cfg);
-			} else if (cfg.type === "sse" || cfg.type === "streamable_http") {
-				client = await this.connectStreamableHTTP(serverKey, cfg);
-			} else {
-				throw new Error(`Unknown connection type: ${cfg.type}`);
-			}
+				if (!client) throw new Error("Client not initialized");
 
-			// Get capabilities
-			const toolsResult = await client.listTools();
-			const tools: ToolInfo[] = toolsResult.tools.map((t) => ({
-				name: t.name,
-				description: t.description,
-				inputSchema: t.inputSchema as Record<string, unknown>,
-			}));
-
-			let resources: ResourceInfo[] = [];
-			let prompts: PromptInfo[] = [];
-
-			try {
-				const resourcesResult = await client.listResources();
-				resources = resourcesResult.resources.map((r) => ({
-					uri: r.uri,
-					name: r.name,
-					description: r.description,
-					mimeType: r.mimeType,
+				// Get capabilities
+				const toolsResult = await client.listTools();
+				const tools: ToolInfo[] = toolsResult.tools.map((t) => ({
+					name: t.name,
+					description: t.description,
+					inputSchema: t.inputSchema as Record<string, unknown>,
 				}));
-			} catch (e: unknown) {
-				if (!this.isMethodNotFound(e)) throw e;
-				console.log(`[MCPClientManager] ${serverKey}: resources not supported`);
-			}
 
-			try {
-				const promptsResult = await client.listPrompts();
-				prompts = promptsResult.prompts.map((p) => ({
-					name: p.name,
-					description: p.description,
-					arguments: p.arguments,
-				}));
-			} catch (e: unknown) {
-				if (!this.isMethodNotFound(e)) throw e;
-				console.log(`[MCPClientManager] ${serverKey}: prompts not supported`);
-			}
+				let resources: ResourceInfo[] = [];
+				let prompts: PromptInfo[] = [];
 
-			// Register with index
-			const prefix = defaultServerPrefix(serverKey, null);
-			this.index.registerClient(prefix, client, tools, resources, prompts);
-			this.clients.set(serverKey, client);
+				try {
+					const resourcesResult = await client.listResources();
+					resources = resourcesResult.resources.map((r) => ({
+						uri: r.uri,
+						name: r.name,
+						description: r.description,
+						mimeType: r.mimeType,
+					}));
+				} catch (e: unknown) {
+					if (!this.isMethodNotFound(e)) throw e;
+					console.log(
+						`[MCPClientManager] ${serverKey}: resources not supported`,
+					);
+				}
 
-			console.log(
-				`[MCPClientManager] ${serverKey} ready: ${tools.length} tools, ${resources.length} resources, ${prompts.length} prompts`,
-			);
+				try {
+					const promptsResult = await client.listPrompts();
+					prompts = promptsResult.prompts.map((p) => ({
+						name: p.name,
+						description: p.description,
+						arguments: p.arguments,
+					}));
+				} catch (e: unknown) {
+					if (!this.isMethodNotFound(e)) throw e;
+					console.log(`[MCPClientManager] ${serverKey}: prompts not supported`);
+				}
+
+				// Register with index
+				const prefix = defaultServerPrefix(serverKey, null);
+				this.index.registerClient(prefix, client, tools, resources, prompts);
+				this.clients.set(serverKey, client);
+
+				console.log(
+					`[MCPClientManager] ${serverKey} ready: ${tools.length} tools, ${resources.length} resources, ${prompts.length} prompts`,
+				);
+			}, timeoutMs);
 		} catch (e) {
 			console.error(`[MCPClientManager] Failed to connect ${serverKey}:`, e);
+			if (client) {
+				try {
+					await client.close();
+				} catch (closeErr) {
+					console.warn(
+						`[MCPClientManager] Error closing failed client ${serverKey}:`,
+						closeErr,
+					);
+				}
+			}
 			throw e;
 		}
+	}
+
+	private async withTimeout<T>(
+		fn: () => Promise<T>,
+		timeoutMs: number,
+	): Promise<T> {
+		return new Promise<T>((resolve, reject) => {
+			const timer = setTimeout(() => {
+				reject(new Error(`Timeout after ${timeoutMs}ms`));
+			}, timeoutMs);
+
+			fn()
+				.then(resolve)
+				.catch(reject)
+				.finally(() => clearTimeout(timer));
+		});
 	}
 
 	private async connectStdio(
@@ -466,6 +512,7 @@ export class MCPClientManager {
 			this.logAudit({
 				timestamp: new Date(),
 				missionId: context?.missionId,
+				sessionId: context?.sessionId,
 				identityId: context?.identityId,
 				tool: actionName,
 				args: args as Record<string, unknown>,
@@ -479,6 +526,7 @@ export class MCPClientManager {
 			this.logAudit({
 				timestamp: new Date(),
 				missionId: context?.missionId,
+				sessionId: context?.sessionId,
 				identityId: context?.identityId,
 				tool: actionName,
 				args: args as Record<string, unknown>,

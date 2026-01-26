@@ -67,7 +67,8 @@ export async function createAgentRuntime(
 						orgId: ctx.identity.orgId,
 						roles: ctx.identity.roles,
 						scopes: ctx.identity.scopes,
-						missionId: ctx.identity.sessionId, // Mapping session to mission? or separate?
+						missionId: ctx.identity.missionId,
+						sessionId: ctx.identity.sessionId,
 						// We can pass JWT if we have one, but here we trust the internal call
 					},
 				);

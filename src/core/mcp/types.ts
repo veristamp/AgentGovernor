@@ -77,11 +77,14 @@ export interface ExecutionContext {
 	orgId?: string;
 	/** Mission ID for audit trail */
 	missionId?: string;
+	/** Session ID for correlation */
+	sessionId?: string;
 }
 
 export interface AuditEntry {
 	timestamp: Date;
 	missionId?: string;
+	sessionId?: string;
 	identityId?: string;
 	tool: string;
 	args: Record<string, unknown>;
