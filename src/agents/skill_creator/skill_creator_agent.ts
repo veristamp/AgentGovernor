@@ -9,14 +9,14 @@ import type {
   SkillFunctionSignature,
 } from "../../registry/skills/schema";
 import { ToolRegistry } from "../../registry/tools/registry";
-import { createAgentRuntime, type RuntimeContext } from "../../runtime/factory";
+import { type RuntimeContext } from "../../runtime/factory";
 import type { RuntimeIdentity } from "../../runtime/middleware";
-import { runSubAgent } from "../../runtime/sub_agent";
 import {
-  createCapabilityLoaderTool,
-  createCapabilitySearchTool,
-} from "../../core/capabilities/discovery";
-import { CapabilityRegistry } from "../../core/capabilities/registry";
+  buildRuntimeContext,
+  createCapabilityTools,
+  createRuntimeWithTools,
+  runAgentLoop,
+} from "../runner";
 import type { LlmClient } from "../main/llm_client";
 import { createSkillCreatorLoopTools } from "./loop_tools";
 import { retrieveRelevantTools } from "./tool_retriever";
@@ -77,15 +77,13 @@ export class SkillCreatorAgent {
 
     const planState: { plan: string; execution_graph?: unknown } = { plan: "" };
     const loopTools = createSkillCreatorLoopTools({ planState });
-    const capabilityRegistry = new CapabilityRegistry({
-      toolRegistry,
-      skillRegistry,
+    const capabilityTools = createCapabilityTools({
+      deps: {
+        toolRegistry,
+        skillRegistry,
+      },
       mcp: dependencies.mcp,
     });
-    const capabilityTools = [
-      createCapabilitySearchTool({ registry: capabilityRegistry }),
-      createCapabilityLoaderTool({ registry: capabilityRegistry }),
-    ];
 
     const system = `You are the Skill Creator Orchestrator.
 You will iteratively discover tools/skills, inspect schemas, refine a plan, then output a FINAL skill draft.
@@ -139,33 +137,33 @@ When done, return type=final with result matching the skill draft JSON schema:
 
     // 4. Create Runtime with Custom Tools (Registry Access)
     // We create the runtime manually to inject our custom loop tools which are NOT standard MCP tools
-    const ctx: RuntimeContext = {
+    const ctx: RuntimeContext = buildRuntimeContext({
       identity,
       mcp: dependencies.mcp,
       policy,
       model,
-    };
-    const runtime = await createAgentRuntime(ctx, []);
-    runtime.tools = [...runtime.tools, ...capabilityTools, ...loopTools];
+    });
+    const runtime = await createRuntimeWithTools(ctx, [
+      ...capabilityTools,
+      ...loopTools,
+    ]);
 
     // 5. Run Loop
     const runId = `skill-creator-run-${Date.now()}`;
-    const { final } = await runSubAgent<SkillDraftResponse>({
-      identity,
-      mcp: dependencies.mcp,
-      policy,
-      model,
+    const { final } = await runAgentLoop<SkillDraftResponse>(
+      ctx,
+      runtime,
       system,
       user,
-      allowedTools: [], // We injected them manually above
-      runId,
-      maxIterations: 10,
-    });
+      {
+        maxIterations: 10,
+        runId,
+        sessionId: identity.sessionId,
+        runType: "skill",
+      },
+    );
 
     // 6. Validate & Finalize
-    // Note: Validation should ideally happen inside the loop (validateFinal), but we can check here too
-    // The `runSubAgent` above doesn't support custom validateFinal yet, so we trust the agent or fail here.
-    // TODO: Enhance runSubAgent to support validateFinal or validation callback.
 
     if (!final || typeof final !== "object") {
       throw new Error("Agent did not return a valid object");

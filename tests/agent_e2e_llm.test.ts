@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Agent, LlmClient } from "../src/agents/main";
+import { WorkflowAgent, LlmClient } from "../src/agents/main";
 import { analyzeCode } from "../src/core/audit";
 import { PolicyEngine } from "../src/core/policy/engine";
 
@@ -58,7 +58,7 @@ test("agent end-to-end with local LLM", async () => {
     modelName = "test-model";
   }
 
-  const agent = new Agent({
+  const agent = new WorkflowAgent({
     llm: llmClient,
     policy: new PolicyEngine(),
     model: modelName,
@@ -81,7 +81,7 @@ test("agent end-to-end with local LLM", async () => {
   // Verify correct skill selection
   expect(result.selectedSkills).toBeDefined();
   const hasDocsSkill = result.selectedSkills.some(
-    (s) => s.includes("docs-to-files") || s.includes("fetch_and_store"),
+    (s: string) => s.includes("docs-to-files") || s.includes("fetch_and_store"),
   );
   expect(hasDocsSkill).toBe(true);
 

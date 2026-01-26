@@ -18,8 +18,8 @@ import {
   launchSandbox,
   launchUnsafe,
 } from "../../sandbox/launcher";
-import { LlmClient, WorkflowAgent } from "../agents/main";
-import { SkillCreatorAgent } from "../agents/skill_creator";
+import { AgentManager } from "../agents";
+import { LlmClient } from "../agents/main";
 import { MCPClientManager } from "../core/mcp";
 import { applyAbacProposalToOrgPolicy, PolicyEngine } from "../core/policy";
 import { createSocketServer, type SocketServer } from "../core/socket";
@@ -183,9 +183,10 @@ Execute Mode:
     await policy.loadRulesFromFile("policy/policy_rules.json");
     const mcp = new MCPClientManager(configPath);
     await mcp.initialize();
-    const agent = new SkillCreatorAgent(
-      { llm: new LlmClient(llmBase, llmKey), policy },
-      {
+    const manager = new AgentManager();
+    const agent = manager.create("skill_creator", {
+      deps: { llm: new LlmClient(llmBase, llmKey), policy },
+      options: {
         model: llmModel,
         toolsPath: "tools_schema.json",
         skillsDir: "skills",
@@ -193,7 +194,7 @@ Execute Mode:
         rolePermissionsPath: "policy/role_permissions.json",
         maxRepairAttempts: 3,
       },
-    );
+    });
     const result = await agent.run(
       {
         goal: skillGoal,
@@ -251,7 +252,8 @@ Execute Mode:
   if (workflowGoal) {
     const policy = new PolicyEngine();
     await policy.loadRulesFromFile("policy/policy_rules.json");
-    const agent = new WorkflowAgent({
+    const manager = new AgentManager();
+    const agent = manager.create("workflow", {
       llm: new LlmClient(llmBase, llmKey),
       policy,
       model: llmModel,

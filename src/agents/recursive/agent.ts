@@ -1,16 +1,16 @@
 import type { LanguageModel } from "ai";
-import {
-  createCapabilityLoaderTool,
-  createCapabilitySearchTool,
-} from "../../core/capabilities/discovery";
-import { CapabilityRegistry } from "../../core/capabilities/registry";
 import type { EngramService } from "../../core/engram/types";
 import type { MCPClientManager } from "../../core/mcp/manager";
 import type { PolicyEngine } from "../../core/policy/engine";
 import type { ToolRegistry } from "../../registry/tools/registry";
-import { createAgentRuntime, type RuntimeContext } from "../../runtime/factory";
-import { runGovernedLoop } from "../../runtime/loop";
+import { type RuntimeContext } from "../../runtime/factory";
 import type { RuntimeIdentity } from "../../runtime/middleware";
+import {
+  buildRuntimeContext,
+  createCapabilityTools,
+  createRuntimeWithTools,
+  runAgentLoop,
+} from "../runner";
 
 export interface RecursiveAgentConfig {
   identity: RuntimeIdentity;
@@ -42,32 +42,25 @@ export async function runRecursiveAgent(
   config: RecursiveAgentConfig,
 ) {
   // 1. Create Tools
-  const capabilityRegistry = new CapabilityRegistry({
-    engram: config.engram,
-    toolRegistry: config.toolRegistry,
+  const capabilityTools = createCapabilityTools({
+    deps: { engram: config.engram, toolRegistry: config.toolRegistry },
     mcp: config.mcp,
-  });
-  const searchTool = createCapabilitySearchTool({
-    registry: capabilityRegistry,
-  });
-  const loaderTool = createCapabilityLoaderTool({
-    registry: capabilityRegistry,
   });
 
   // 2. Create Runtime
-  const ctx: RuntimeContext = {
+  const ctx: RuntimeContext = buildRuntimeContext({
     identity: config.identity,
     mcp: config.mcp,
     policy: config.policy,
     model: config.model,
-  };
+  });
 
-  const runtime = await createAgentRuntime(ctx, []);
-  runtime.tools.push(searchTool, loaderTool);
+  const runtime = await createRuntimeWithTools(ctx, capabilityTools);
 
   // 3. Run Loop
-  return await runGovernedLoop(ctx, runtime, RECURSIVE_AGENT_PROMPT, goal, {
+  return await runAgentLoop(ctx, runtime, RECURSIVE_AGENT_PROMPT, goal, {
     maxIterations: 10,
     sessionId: config.identity.sessionId,
+    runType: "tool",
   });
 }

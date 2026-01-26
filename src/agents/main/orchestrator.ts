@@ -1,449 +1,246 @@
-import { generateText, tool } from "ai";
-import { z } from "zod";
 import { getMCPClientManager } from "../../core/mcp/manager";
 import type { PolicyEngine } from "../../core/policy/engine";
 import { WorkflowRegistry } from "../../registry/workflows";
 import type { RuntimeIdentity } from "../../runtime/middleware";
+import { createMissionRuntime } from "../../runtime/mission";
+import { createTaskAgentTool } from "../../runtime/sub_agent";
+import type { AgentLoopTool } from "../../runtime/types";
 import {
-	createChildIdentity,
-	createMissionRuntime,
-} from "../../runtime/mission";
-import { runSubAgent } from "../../runtime/sub_agent";
+  buildRuntimeContext,
+  createRuntimeWithTools,
+  runAgentLoop,
+} from "../runner";
 import { SkillCreatorAgent } from "../skill_creator/skill_creator_agent";
 import type { LlmClient } from "./llm_client";
 import { SkillCatalog } from "./skill_catalog";
 import type { AgentRequest, AgentResult } from "./types";
 
-// Tools that the Orchestrator uses
 const ORCHESTRATOR_TOOLS = {
-	"workflows.search": {
-		description:
-			"Search for existing workflows that might match the user's goal",
-	},
-	"skills.search": {
-		description:
-			"Search for skills/capabilities if no direct workflow is found",
-	},
-	"skill.create": {
-		description: "Create a new reusable skill (Python code) to solve a task.",
-	},
-	"scout.spawn": {
-		description:
-			"Spawn a sub-agent (Scout) to solve a specific sub-task or explore",
-	},
+  "workflows.search": {
+    description:
+      "Search for existing workflows that might match the user's goal",
+  },
+  "skills.search": {
+    description:
+      "Search for skills/capabilities if no direct workflow is found",
+  },
+  "skill.create": {
+    description: "Create a new reusable skill (Python code) to solve a task.",
+  },
+  "task.run": {
+    description:
+      "Run a sub-agent to explore or solve a focused sub-task and return a summary",
+  },
 };
 
 export class OrchestratorAgent {
-	private catalog: SkillCatalog;
-	private workflows: WorkflowRegistry;
+  private catalog: SkillCatalog;
+  private workflows: WorkflowRegistry;
 
-	constructor(
-		private options: {
-			llm: LlmClient; // Config for the Orchestrator itself
-			policy: PolicyEngine;
-			model: string; // Model for Orchestrator
-			scoutModel?: string; // Model for sub-agents (can be different)
-		},
-	) {
-		this.catalog = new SkillCatalog(options.policy);
-		this.workflows = new WorkflowRegistry();
-	}
+  constructor(
+    private options: {
+      llm: LlmClient;
+      policy: PolicyEngine;
+      model: string;
+      scoutModel?: string;
+    },
+  ) {
+    this.catalog = new SkillCatalog(options.policy);
+    this.workflows = new WorkflowRegistry();
+  }
 
-	async run(request: AgentRequest): Promise<AgentResult> {
-		// 1. Prepare Orchestrator Runtime
-		const { createOpenAI } = await import("@ai-sdk/openai");
-		const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
-		const orchModel = openai(this.options.model);
-		const mcp = await getMCPClientManager();
+  async run(request: AgentRequest): Promise<AgentResult> {
+    const { createOpenAI } = await import("@ai-sdk/openai");
+    const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const model = openai(this.options.model);
+    const scoutModel = openai(this.options.scoutModel || this.options.model);
+    const mcp = await getMCPClientManager();
 
-		// Tools implementation
-		const tools: any = {
-			"workflows.search": async ({ query }: { query: string }) => {
-				return await this.workflows.search(
-					query,
-					[],
-					request.identity.orgId,
-					5,
-				);
-			},
-			"skills.search": async ({ query }: { query: string }) => {
-				return await this.catalog.search(query, request.identity, 5);
-			},
-			"skill.create": async ({ goal }: { goal: string }) => {
-				console.log(`[Orchestrator] Spawning Skill Creator for: ${goal}`);
-				const creator = new SkillCreatorAgent(
-					{ llm: this.options.llm },
-					{ model: this.options.model },
-				);
-				// Pass the parent request context so the skill is owned by the same user/mission
-				const result = await creator.run(
-					{
-						goal,
-						requester: {
-							id: request.identity.id ?? "unknown-orchestrator",
-							roles: request.identity.roles,
-							orgId: request.identity.orgId,
-							missionId: request.identity.missionId,
-							sessionId: request.identity.sessionId,
-						},
-					},
-					{ mcp },
-				);
-				return {
-					skillId: result.skillRef,
-					summary: result.draft.summary,
-				};
-			},
-			"scout.spawn": async ({
-				goal,
-				context,
-				tools,
-			}: {
-				goal: string;
-				context?: string;
-				tools?: string[];
-			}) => {
-				return await this.spawnScout(goal, context || "", tools || [], request);
-			},
-		};
+    const baseIdentity: RuntimeIdentity = {
+      ...request.identity,
+      id: `orchestrator-${Date.now()}`,
+      type: "agent",
+      missionId: request.identity.missionId || `miss_${Date.now()}`,
+      sessionId: request.identity.sessionId || `sess_${Date.now()}`,
+    };
+    const mission = createMissionRuntime(baseIdentity);
+    const runtimeIdentity = mission.identity;
+    const workflows = this.workflows;
+    const catalog = this.catalog;
+    const options = this.options;
 
-		// 2. Orchestrator Loop (using Vercel AI SDK native loop)
-		const systemPrompt = `You are the Orchestrator. Your job is to route the user's request to the best execution path.
+    const taskTool = createTaskAgentTool({
+      identity: runtimeIdentity,
+      mcp,
+      policy: this.options.policy,
+      model: scoutModel,
+      maxIterations: 8,
+    });
+
+    const tools: AgentLoopTool[] = [
+      {
+        name: "workflows.search",
+        description: ORCHESTRATOR_TOOLS["workflows.search"].description,
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            limit: { type: "number" },
+          },
+          required: ["query"],
+        },
+        async execute(args: Record<string, unknown>) {
+          const query = String(args.query || "");
+          const limit =
+            typeof args.limit === "number"
+              ? args.limit
+              : Number(args.limit || 5);
+          return await workflows.search(
+            query,
+            [],
+            request.identity.orgId,
+            Math.min(limit || 5, 10),
+          );
+        },
+      },
+      {
+        name: "skills.search",
+        description: ORCHESTRATOR_TOOLS["skills.search"].description,
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            limit: { type: "number" },
+          },
+          required: ["query"],
+        },
+        async execute(args: Record<string, unknown>) {
+          const query = String(args.query || "");
+          const limit =
+            typeof args.limit === "number"
+              ? args.limit
+              : Number(args.limit || 5);
+          return await catalog.search(
+            query,
+            request.identity,
+            Math.min(limit || 5, 10),
+          );
+        },
+      },
+      {
+        name: "skill.create",
+        description: ORCHESTRATOR_TOOLS["skill.create"].description,
+        inputSchema: {
+          type: "object",
+          properties: {
+            goal: { type: "string" },
+          },
+          required: ["goal"],
+        },
+        async execute(args: Record<string, unknown>) {
+          const goal = String(args.goal || "");
+          console.log(`[Orchestrator] Spawning Skill Creator for: ${goal}`);
+          const creator = new SkillCreatorAgent(
+            { llm: options.llm, policy: options.policy },
+            { model: options.model },
+          );
+          const result = await creator.run(
+            {
+              goal,
+              requester: {
+                id: request.identity.id ?? "unknown-orchestrator",
+                roles: request.identity.roles,
+                orgId: request.identity.orgId,
+                missionId: runtimeIdentity.missionId,
+                sessionId: runtimeIdentity.sessionId,
+              },
+            },
+            { mcp },
+          );
+          return {
+            skillRef: result.skillRef,
+            summary: result.draft.summary,
+          };
+        },
+      },
+      taskTool,
+    ];
+
+    const ctx = buildRuntimeContext({
+      identity: runtimeIdentity,
+      mcp,
+      policy: this.options.policy,
+      model,
+    });
+    const runtime = await createRuntimeWithTools(ctx, tools);
+
+    const systemPrompt = `You are the Orchestrator. Your job is to route the user's request to the best execution path.
 
 STRATEGY:
-1. First, CALL 'searchWorkflows' to check for existing workflows.
-2. IF workflows found: Return the code.
-3. IF NO workflows found (empty result):
-   - CALL 'searchSkills'.
-4. IF NO skills found (empty result):
+1. First, CALL 'workflows.search' to check for existing workflows.
+2. IF workflows found: summarize the best match and return code or summary.
+3. IF NO workflows found:
+   - CALL 'skills.search'.
+4. IF NO skills found:
    - CALL 'skill.create' to generate a new skill.
-   - OR CALL 'scout.spawn' if the task is fuzzy/exploratory.
+   - OR CALL 'task.run' if the task is exploratory.
 
-CRITICAL: You MUST keep calling tools until you have a solution. Do not stop at an empty search result.`;
+CRITICAL: You MUST keep calling tools until you have a solution. Do not stop at an empty search result.
 
-		// Use 'any' cast to bypass temporary TS issues with AI SDK 4.0 types in this environment
-		const genOptions: any = {
-			model: orchModel,
-			system: systemPrompt,
-			messages: [{ role: "user", content: request.goal }],
-			tools: {
-				searchWorkflows: tool({
-					description: ORCHESTRATOR_TOOLS["workflows.search"].description,
-					inputSchema: z.object({
-						query: z.string().describe("Natural language query for workflows"),
-						limit: z.number().optional().describe("Max number of results"),
-					}),
-					execute: tools["workflows.search"],
-				}),
-				searchSkills: tool({
-					description: ORCHESTRATOR_TOOLS["skills.search"].description,
-					inputSchema: z.object({
-						query: z.string().describe("Natural language query for skills"),
-						limit: z.number().optional().describe("Max number of results"),
-					}),
-					execute: tools["skills.search"],
-				}),
-				createSkill: tool({
-					description: ORCHESTRATOR_TOOLS["skill.create"].description,
-					inputSchema: z.object({
-						goal: z.string().describe("Goal for the new skill"),
-					}),
-					execute: tools["skill.create"],
-				}),
-				spawnScout: tool({
-					description: ORCHESTRATOR_TOOLS["scout.spawn"].description,
-					inputSchema: z.object({
-						goal: z.string().describe("Specific goal for the scout"),
-						context: z
-							.string()
-							.optional()
-							.describe("Background info/constraints"),
-						tools: z
-							.array(z.string())
-							.optional()
-							.describe(
-								"List of tool names or skill refs to load for the scout",
-							),
-					}),
-					execute: tools["scout.spawn"],
-				}),
-			},
-			toolChoice: "required",
-			maxSteps: 5,
-		};
+Return JSON with keys: code, selectedSkills (string[]), plan.`;
 
-		const result = await generateText(genOptions);
-		const toolResults: any[] = result.toolResults || [];
+    const { final, iterations } = await runAgentLoop<{
+      code?: string;
+      selectedSkills?: string[];
+      plan?: string;
+      result?: string;
+    }>(ctx, runtime, systemPrompt, request.goal, {
+      maxIterations: 8,
+      runId: `orchestrator-run-${Date.now()}`,
+      sessionId: runtimeIdentity.sessionId,
+      runType: "workflow",
+      validateFinal: async (value) => {
+        if (typeof value === "string") {
+          return { ok: true, value: { code: value } };
+        }
+        if (value && typeof value === "object") {
+          const record = value as Record<string, unknown>;
+          const code =
+            typeof record.code === "string"
+              ? record.code
+              : typeof record.result === "string"
+                ? record.result
+                : "";
+          if (!code) return { ok: false, error: "Missing code" };
+          return { ok: true, value: { ...record, code } };
+        }
+        return { ok: false, error: "Invalid result" };
+      },
+    });
 
-		// Check if we created a skill
-		const skillTool = toolResults.find((tr) => tr.toolName === "createSkill");
-		if (skillTool) {
-			const output = skillTool.output ?? skillTool.result;
-			return {
-				code: `Created Skill: ${output.skillId}\nSummary: ${output.summary}`,
-				selectedSkills: [output.skillId],
-				prompt: request.goal,
-				repairAttempts: 0,
-				plan: "Created new skill on demand",
-			};
-		}
+    const resolved = final as {
+      code?: string;
+      selectedSkills?: string[];
+      plan?: string;
+      result?: string;
+    };
+    const code =
+      typeof resolved.code === "string"
+        ? resolved.code
+        : typeof resolved.result === "string"
+          ? resolved.result
+          : "";
+    const selectedSkills = Array.isArray(resolved.selectedSkills)
+      ? resolved.selectedSkills.filter((s) => typeof s === "string")
+      : [];
+    const plan = typeof resolved.plan === "string" ? resolved.plan : undefined;
 
-		// Check if we spawned a scout
-		const scoutTool = toolResults.find((tr) => tr.toolName === "spawnScout");
-		if (scoutTool) {
-			const output = scoutTool.output ?? scoutTool.result;
-			const scoutText =
-				typeof output.scout_result === "string"
-					? output.scout_result
-					: JSON.stringify(output.scout_result, null, 2);
-			return {
-				code: scoutText || "# No output from scout",
-				selectedSkills: [],
-				prompt: request.goal,
-				repairAttempts: 0,
-				plan: "Delegated to Scout",
-			};
-		}
-
-		// Check for workflow match
-		const workflowTool = toolResults.find(
-			(tr) => tr.toolName === "searchWorkflows",
-		);
-		const workflowOutput = workflowTool?.output ?? workflowTool?.result;
-		const hasWorkflowMatch = Array.isArray(workflowOutput)
-			? workflowOutput.length > 0
-			: !!workflowOutput;
-
-		if (!hasWorkflowMatch && toolResults.length === 0) {
-			// Only fallback if NO tools were used effectively
-			const scout = await this.spawnScout(
-				"Summarize authentication methods implemented in src/core/auth",
-				"Inspect source files under src/core/auth and summarize auth mechanisms.",
-				["filesystem", "file", "read", "list"],
-				request,
-			);
-			const scoutText =
-				typeof scout.scout_result === "string"
-					? scout.scout_result
-					: JSON.stringify(scout.scout_result, null, 2);
-			return {
-				code: scoutText || "# No output",
-				selectedSkills: [],
-				prompt: request.goal,
-				repairAttempts: 0,
-				plan: "Orchestrated execution",
-			};
-		}
-
-		const rawText = result.text || "";
-		const fallbackFromTools = toolResults.length
-			? JSON.stringify(toolResults, null, 2)
-			: "";
-
-		const outputText = rawText.trim() || fallbackFromTools.trim();
-		const codeMatch =
-			outputText.match(/```python\n([\s\S]*?)\n```/) ||
-			outputText.match(/```\n([\s\S]*?)\n```/);
-		const code = codeMatch ? codeMatch[1] : outputText || "# No output";
-
-		return {
-			code: code || "",
-			selectedSkills: [], // Orchestrator usually delegates this
-			prompt: request.goal,
-			repairAttempts: 0,
-			plan: "Orchestrated execution",
-		};
-	}
-
-	private async spawnScout(
-		goal: string,
-		context: string,
-		requestedTools: string[],
-		parentRequest: AgentRequest,
-	) {
-		console.log(`[Orchestrator] Spawning Scout: ${goal}`);
-
-		// 1. Setup Runtime for Scout
-		const mcp = await getMCPClientManager();
-		const { createOpenAI } = await import("@ai-sdk/openai");
-		const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
-		// Use scout model or fallback to main
-		const modelName = this.options.scoutModel || this.options.model;
-		const model = openai(modelName);
-
-		const baseIdentity: RuntimeIdentity = {
-			...parentRequest.identity,
-			id: `orchestrator-${Date.now()}`,
-			type: "agent",
-			missionId: parentRequest.identity.missionId!,
-			sessionId: parentRequest.identity.sessionId!,
-		};
-		// const mission = createMissionRuntime(baseIdentity);
-		// const runtimeIdentity = createChildIdentity(mission, {
-		// 	id: `scout-${Date.now()}`,
-		// 	type: "agent",
-		// });
-		const runtimeIdentity: RuntimeIdentity = {
-			...baseIdentity,
-			id: `scout-${Date.now()}`,
-		};
-
-		// 2. Load Requested Tools
-		const allTools = Array.from(mcp.getCapabilities().tools.keys());
-
-		let activeTools = allTools;
-		if (requestedTools && requestedTools.length > 0) {
-			activeTools = allTools.filter((t) =>
-				requestedTools.some((req) => t === req || t.startsWith(req)),
-			);
-		}
-
-		// 3. Run Scout Loop
-		const system = `You are a Scout Agent. Your goal: ${goal}.
-Context: ${context}
-Available Tools: ${activeTools.join(", ")}
-Use tools to inspect files and return a concise summary (not code).`;
-
-		const userPrompt = `Summarize the authentication methods implemented under src/core/auth. Use filesystem tools to list and read relevant files. Return 3-6 short bullet points and include keywords like JWT, OAuth, admin client, agent client if present.`;
-
-		const runId = `scout-run-${Date.now()}`;
-		const { final } = await runSubAgent<string>({
-			// mission,
-			identity: runtimeIdentity,
-			mcp,
-			policy: this.options.policy,
-			model,
-			system,
-			user: userPrompt,
-			allowedTools: activeTools,
-			runId,
-			maxIterations: 10,
-		});
-
-		const finalText = typeof final === "string" ? final.trim() : "";
-		const needsData = /please provide|need (the )?files|cannot access/i.test(
-			finalText,
-		);
-		if (finalText.length > 0 && !needsData) {
-			return {
-				scout_result: finalText,
-			};
-		}
-
-		// Fallback: deterministic fetch + summarize if the model returned empty output
-		const toolNames = mcp.getToolNames();
-		const listTool = toolNames.find((name) =>
-			name.toLowerCase().includes("list_directory"),
-		);
-		const readTool =
-			toolNames.find((name) => /read.*file/.test(name.toLowerCase())) ||
-			toolNames.find((name) => name.toLowerCase().includes("read_text"));
-
-		if (!listTool || !readTool) {
-			return { scout_result: final };
-		}
-
-		const listSchema = mcp.getCapabilities().tools.get(listTool)?.inputSchema as
-			| Record<string, any>
-			| undefined;
-		const readSchema = mcp.getCapabilities().tools.get(readTool)?.inputSchema as
-			| Record<string, any>
-			| undefined;
-
-		const pickPathKey = (schema?: Record<string, any>) => {
-			const props = schema?.properties || {};
-			const keys = Object.keys(props);
-			return (
-				keys.find((k) => k.toLowerCase().includes("path")) || keys[0] || "path"
-			);
-		};
-
-		const listKey = pickPathKey(listSchema);
-		const readKey = pickPathKey(readSchema);
-		const authDir = "src/core/auth";
-
-		const listResult = await mcp.executeAction(
-			{
-				actionType: "tool",
-				actionName: listTool,
-				arguments: { [listKey]: authDir },
-			},
-			{
-				identityId: runtimeIdentity.id,
-				orgId: runtimeIdentity.orgId,
-				roles: runtimeIdentity.roles,
-				scopes: runtimeIdentity.scopes,
-				missionId: runtimeIdentity.sessionId,
-			},
-		);
-
-		let entries: any[] = [];
-		if (Array.isArray(listResult)) {
-			entries = listResult;
-		} else if (typeof listResult === "string") {
-			try {
-				const parsed = JSON.parse(listResult);
-				if (Array.isArray(parsed)) entries = parsed;
-			} catch {
-				// ignore
-			}
-		} else if (listResult && typeof listResult === "object") {
-			const maybeEntries = (listResult as { entries?: any[] }).entries;
-			if (Array.isArray(maybeEntries)) entries = maybeEntries;
-		}
-
-		const fileNames = entries
-			.map((e) => (typeof e === "string" ? e : e?.name || e?.path))
-			.filter((name) => typeof name === "string")
-			.filter((name) => name.endsWith(".ts") || name.endsWith(".py"));
-
-		if (fileNames.length === 0 && typeof listResult === "string") {
-			const lines = listResult.split(/\r?\n/).map((l) => l.trim());
-			for (const line of lines) {
-				const match = line.match(/^\[(FILE|DIR)\]\s+(.*)$/i);
-				if (!match) continue;
-				const type = match[1]?.toLowerCase();
-				const name = match[2]?.trim();
-				if (type !== "file" || !name) continue;
-				if (name.endsWith(".ts") || name.endsWith(".py")) {
-					fileNames.push(name);
-				}
-			}
-		}
-
-		const fileContents: string[] = [];
-		for (const name of fileNames) {
-			const path =
-				name.includes(":") || name.startsWith("/")
-					? name
-					: `${authDir}/${name}`;
-			const content = await mcp.executeAction(
-				{
-					actionType: "tool",
-					actionName: readTool,
-					arguments: { [readKey]: path },
-				},
-				{
-					identityId: runtimeIdentity.id,
-					orgId: runtimeIdentity.orgId,
-					roles: runtimeIdentity.roles,
-					scopes: runtimeIdentity.scopes,
-					missionId: runtimeIdentity.sessionId,
-				},
-			);
-			if (typeof content === "string") {
-				fileContents.push(`# ${name}\n${content.slice(0, 2000)}`);
-			}
-		}
-
-		const summaryPrompt = `You have direct access to the file contents below. Summarize the authentication methods implemented in src/core/auth. Do not ask for more files. Only use the provided content and cite file names when relevant.\n\n${fileContents.join("\n\n")}`;
-		const summary = await generateText({
-			model,
-			prompt: summaryPrompt,
-		});
-
-		return {
-			scout_result: summary.text || "# No output",
-		};
-	}
+    return {
+      code: code || "",
+      selectedSkills,
+      prompt: `${systemPrompt}\n\n${request.goal}`,
+      repairAttempts: iterations,
+      plan,
+    };
+  }
 }

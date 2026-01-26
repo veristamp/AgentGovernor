@@ -7,8 +7,8 @@ import type {
   AgentLoopTool,
   AgentLoopToolContext,
 } from "./types";
-import { MessageStore, type ToolCall } from "./message";
-import { getMissionService } from "../core/mission/service";
+import { type ToolCall, type ToolResult } from "./message";
+import { SessionManager } from "./session_manager";
 
 export interface GovernedLoopOptions extends AgentLoopRunOptions {
   runId?: string;
@@ -78,24 +78,11 @@ export async function runGovernedLoop<TFinal = string>(
 }> {
   const maxIterations = options.maxIterations ?? 10;
   const sessionId = options.sessionId || ctx.identity.sessionId;
-  const missionService = getMissionService();
-  const mission = ctx.identity.missionId
-    ? await missionService.getMission(ctx.identity.missionId)
-    : null;
-  const missionId = mission?.id;
-  const existingSession = await missionService.getSession(sessionId);
-  if (!existingSession) {
-    await missionService.createSession({
-      id: sessionId,
-      missionId,
-      preloadContext: Boolean(missionId),
-    });
-  }
-  const run = await missionService.createRun({
-    id: options.runId,
+  const session = await SessionManager.start({
     sessionId,
-    missionId,
-    type: options.runType || "workflow",
+    missionId: ctx.identity.missionId,
+    runId: options.runId,
+    runType: options.runType,
     policyContext: {
       orgId: ctx.identity.orgId || "",
       roles: ctx.identity.roles,
@@ -103,16 +90,13 @@ export async function runGovernedLoop<TFinal = string>(
     },
   });
   const traceManager = new TraceManager({
-    runId: run.id,
-    sessionId,
+    runId: session.runId,
+    sessionId: session.sessionId,
   });
 
   console.log(`[Loop] Starting run (Session: ${traceManager.sessionId})`);
-  await missionService.updateRunStatus(run.id, "running");
-  await missionService.updateSessionState(sessionId, {});
-  await MessageStore.load(sessionId);
-  await MessageStore.ensureSystem(sessionId, systemPrompt);
-  await MessageStore.addUser(sessionId, userPrompt);
+  await session.ensureSystem(systemPrompt);
+  await session.addUser(userPrompt);
 
   let currentIteration = 0;
   let finished = false;
@@ -147,11 +131,11 @@ export async function runGovernedLoop<TFinal = string>(
         };
       }
 
-      await MessageStore.compact(sessionId, {
+      await session.compact({
         maxMessages: options.compaction?.maxMessages ?? 120,
         keepLast: options.compaction?.keepLast ?? 40,
       });
-      const messages = MessageStore.toLoopMessages(sessionId);
+      const messages = session.messages();
       const stream = streamText({
         model: runtime.model,
         tools: sdkTools,
@@ -184,14 +168,10 @@ export async function runGovernedLoop<TFinal = string>(
         toolCallId: call.toolCallId,
       }));
 
-      await MessageStore.addAssistant(sessionId, text || "", calls);
+      await session.addAssistant(text || "", calls);
 
       if (calls.length > 0) {
-        const toolResults: {
-          toolCallId: string;
-          toolName: string;
-          result: unknown;
-        }[] = [];
+        const toolResults: ToolResult[] = [];
         const timeoutMs = options.toolCallTimeoutMs;
         const execute = async (call: ToolCall, index: number) => {
           const originalName =
@@ -312,7 +292,7 @@ export async function runGovernedLoop<TFinal = string>(
             result: r.result,
           });
         }
-        await MessageStore.addToolResults(sessionId, toolResults);
+        await session.addToolResults(toolResults);
       }
 
       if (calls.length === 0) {
@@ -348,11 +328,14 @@ export async function runGovernedLoop<TFinal = string>(
         finished = true;
       }
 
-      await missionService.updateSessionState(sessionId, {});
+      await session.compact({
+        maxMessages: options.compaction?.maxMessages ?? 120,
+        keepLast: options.compaction?.keepLast ?? 40,
+      });
       currentIteration++;
     }
   } catch (e) {
-    await missionService.updateRunStatus(run.id, "failed");
+    await session.finish("failed");
     throw e;
   }
 
@@ -365,7 +348,7 @@ export async function runGovernedLoop<TFinal = string>(
     type: "final",
     content: { result: finalValue },
   });
-  await missionService.updateRunStatus(run.id, "completed");
+  await session.finish("completed");
 
   return {
     final: finalValue as TFinal,

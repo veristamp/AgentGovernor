@@ -1,19 +1,19 @@
 import { analyzeCode } from "../../core/audit";
 import { getMCPClientManager } from "../../core/mcp/manager";
-import {
-  createCapabilityLoaderTool,
-  createCapabilitySearchTool,
-} from "../../core/capabilities/discovery";
-import { CapabilityRegistry } from "../../core/capabilities/registry";
 import type { PolicyEngine } from "../../core/policy/engine";
 import { ToolRegistry } from "../../registry/tools/registry";
 import { SkillRegistry } from "../../registry/skills/registry";
 import { WorkflowRegistry } from "../../registry/workflows";
 // New Runtime Imports
-import { createAgentRuntime, type RuntimeContext } from "../../runtime/factory";
-import { runGovernedLoop } from "../../runtime/loop";
+import { type RuntimeContext } from "../../runtime/factory";
 import type { RuntimeIdentity } from "../../runtime/middleware";
 import { createMissionRuntime } from "../../runtime/mission";
+import {
+  buildRuntimeContext,
+  createCapabilityTools,
+  createRuntimeWithTools,
+  runAgentLoop,
+} from "../runner";
 import type { LlmClient } from "./llm_client";
 import { buildPrompt } from "./prompt_builder";
 import { SkillCatalog } from "./skill_catalog";
@@ -87,16 +87,14 @@ export class WorkflowAgent {
     const mcp = await getMCPClientManager();
     const toolRegistry = new ToolRegistry();
     const skillRegistry = new SkillRegistry();
-    const capabilityRegistry = new CapabilityRegistry({
-      toolRegistry,
-      skillRegistry,
-      workflowRegistry: this.workflows,
+    const capabilityTools = createCapabilityTools({
+      deps: {
+        toolRegistry,
+        skillRegistry,
+        workflowRegistry: this.workflows,
+      },
       mcp,
     });
-    const capabilityTools = [
-      createCapabilitySearchTool({ registry: capabilityRegistry }),
-      createCapabilityLoaderTool({ registry: capabilityRegistry }),
-    ];
 
     // Note: LlmClient is wrapping the model construction.
     // Ideally we pass the Vercel LanguageModel directly.
@@ -107,48 +105,39 @@ export class WorkflowAgent {
     const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const model = openai(this.options.model);
 
-    const missionId = request.identity.missionId || `mission-${Date.now()}`;
-    const sessionId = request.identity.sessionId || `session-${Date.now()}`;
     const baseIdentity: RuntimeIdentity = {
       ...request.identity,
       id: `workflow-agent-${Date.now()}`,
       type: "agent",
-      missionId,
-      sessionId,
+      missionId: request.identity.missionId || `miss_${Date.now()}`,
+      sessionId: request.identity.sessionId || `sess_${Date.now()}`,
     };
     const mission = createMissionRuntime(baseIdentity);
     const runtimeIdentity = mission.identity;
 
-    const ctx: RuntimeContext = {
+    const ctx: RuntimeContext = buildRuntimeContext({
       identity: runtimeIdentity,
       mcp,
       policy: this.options.policy,
       model,
-    };
+    });
 
-    // 2. Create Runtime (No MCP tools for workflow builder, only internal loop tools)
-    // WorkflowAgent relies on `loopTools` which are local functions, not MCP tools.
-    // `createAgentRuntime` is designed for MCP tools.
-    // However, we can adapt `loopTools` to be passed to `runGovernedLoop` directly via the runtime object.
-
-    // We create a "dummy" runtime with no MCP tools, then inject our local tools
-    const runtime = await createAgentRuntime(ctx, []);
-
-    // Inject local tools manually into the runtime
-    // We need to adapt AgentLoopTool interface to the one expected by Runtime (which handles execute)
-    // Wait, AgentRuntime uses AgentLoopTool which has execute().
-    // createAgentRuntime creates proxy tools. We can just add our local tools.
-    runtime.tools = [...runtime.tools, ...capabilityTools, ...loopTools];
+    // 2. Create Runtime with shared tools
+    const runtime = await createRuntimeWithTools(ctx, [
+      ...capabilityTools,
+      ...loopTools,
+    ]);
 
     // 3. Run Loop
     const runId = `workflow-run-${Date.now()}`;
-    const { final, iterations, trace } = await runGovernedLoop<{
+    const { final, iterations } = await runAgentLoop<{
       code: string;
       manifest: { skills: string[]; tools: string[]; io_calls?: string[] };
     }>(ctx, runtime, system, user, {
       maxIterations: 12,
       runId,
       sessionId: mission.sessionId,
+      runType: "workflow",
       validateFinal: async (value) => {
         // Existing validation logic
         const val = value as any;
