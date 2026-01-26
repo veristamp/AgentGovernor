@@ -12,6 +12,11 @@ import { ToolRegistry } from "../../registry/tools/registry";
 import { createAgentRuntime, type RuntimeContext } from "../../runtime/factory";
 import type { RuntimeIdentity } from "../../runtime/middleware";
 import { runSubAgent } from "../../runtime/sub_agent";
+import {
+  createCapabilityLoaderTool,
+  createCapabilitySearchTool,
+} from "../../core/capabilities/discovery";
+import { CapabilityRegistry } from "../../core/capabilities/registry";
 import type { LlmClient } from "../main/llm_client";
 import { createSkillCreatorLoopTools } from "./loop_tools";
 import { retrieveRelevantTools } from "./tool_retriever";
@@ -71,14 +76,19 @@ export class SkillCreatorAgent {
     const initialSkills = await skillRegistry.search(request.goal, 6);
 
     const planState: { plan: string; execution_graph?: unknown } = { plan: "" };
-    const loopTools = createSkillCreatorLoopTools({
+    const loopTools = createSkillCreatorLoopTools({ planState });
+    const capabilityRegistry = new CapabilityRegistry({
       toolRegistry,
       skillRegistry,
-      planState,
+      mcp: dependencies.mcp,
     });
+    const capabilityTools = [
+      createCapabilitySearchTool({ registry: capabilityRegistry }),
+      createCapabilityLoaderTool({ registry: capabilityRegistry }),
+    ];
 
     const system = `You are the Skill Creator Orchestrator.
-You will iteratively search tools/skills, inspect schemas, refine a plan, then output a FINAL skill draft.
+You will iteratively discover tools/skills, inspect schemas, refine a plan, then output a FINAL skill draft.
 
 Skill requirements:
 - Skills are higher-level orchestration graphs over MCP tools.
@@ -99,7 +109,7 @@ When done, return type=final with result matching the skill draft JSON schema:
 }
 `;
 
-    const user = `GOAL:\n${request.goal}\n\nCONSTRAINTS:\n${(request.constraints || []).map((c) => `- ${c}`).join("\n") || "- (none)"}\n\nINITIAL TOOL CANDIDATES (summaries):\n${initialTools.map((t) => `- ${t.qualifiedName}: ${t.description}`).join("\n") || "- (none)"}\n\nRELATED EXISTING SKILLS (summaries):\n${initialSkills.map((s) => `- ${s.skillRef}: ${s.description}`).join("\n") || "- (none)"}\n\nStart by calling registry.search if you need more tools/skills, and call update_plan as you refine your execution graph.`;
+    const user = `GOAL:\n${request.goal}\n\nCONSTRAINTS:\n${(request.constraints || []).map((c) => `- ${c}`).join("\n") || "- (none)"}\n\nINITIAL TOOL CANDIDATES (summaries):\n${initialTools.map((t) => `- ${t.qualifiedName}: ${t.description}`).join("\n") || "- (none)"}\n\nRELATED EXISTING SKILLS (summaries):\n${initialSkills.map((s) => `- ${s.skillRef}: ${s.description}`).join("\n") || "- (none)"}\n\nUse capability_search to find more tools/skills and system.load_capability to inspect them. Use update_plan as you refine.`;
 
     // 2. Identity & Model Setup
     // We trust the requester to provide valid identity info
@@ -136,7 +146,7 @@ When done, return type=final with result matching the skill draft JSON schema:
       model,
     };
     const runtime = await createAgentRuntime(ctx, []);
-    runtime.tools = [...runtime.tools, ...loopTools];
+    runtime.tools = [...runtime.tools, ...capabilityTools, ...loopTools];
 
     // 5. Run Loop
     const runId = `skill-creator-run-${Date.now()}`;

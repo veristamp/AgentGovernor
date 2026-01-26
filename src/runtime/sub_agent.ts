@@ -7,39 +7,39 @@ import type { RuntimeIdentity } from "./middleware";
 import type { TraceEvent } from "./trace";
 
 export interface SubAgentRunOptions {
-	identity: RuntimeIdentity;
-	mcp: MCPClientManager;
-	policy: PolicyEngine;
-	model: LanguageModel;
-	system: string;
-	user: string;
-	allowedTools: string[];
-	runId?: string;
-	maxIterations?: number;
+  identity: RuntimeIdentity;
+  mcp: MCPClientManager;
+  policy: PolicyEngine;
+  model: LanguageModel;
+  system: string;
+  user: string;
+  allowedTools: string[];
+  runId?: string;
+  maxIterations?: number;
+  runType?: "workflow" | "skill" | "tool" | "research";
 }
 
 export async function runSubAgent<TFinal = string>(
-	options: SubAgentRunOptions,
+  options: SubAgentRunOptions,
 ): Promise<{ final: TFinal; iterations: number; trace: TraceEvent[] }> {
-	const ctx: RuntimeContext = {
-		identity: options.identity,
-		mcp: options.mcp,
-		policy: options.policy,
-		model: options.model,
-	};
+  const ctx: RuntimeContext = {
+    identity: options.identity,
+    mcp: options.mcp,
+    policy: options.policy,
+    model: options.model,
+  };
 
-	const runtime = await createAgentRuntime(ctx, options.allowedTools);
-	const runId = options.runId || `sub-agent-${Date.now()}`;
-
-	return await runGovernedLoop<TFinal>(
-		ctx,
-		runtime,
-		options.system,
-		options.user,
-		{
-			maxIterations: options.maxIterations ?? 10,
-			runId,
-			sessionId: options.identity.sessionId,
-		},
-	);
+  const runtime = await createAgentRuntime(ctx, options.allowedTools);
+  return await runGovernedLoop<TFinal>(
+    ctx,
+    runtime,
+    options.system,
+    options.user,
+    {
+      maxIterations: options.maxIterations ?? 10,
+      runId: options.runId,
+      runType: options.runType || "tool",
+      sessionId: options.identity.sessionId,
+    },
+  );
 }

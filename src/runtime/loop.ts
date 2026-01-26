@@ -79,18 +79,29 @@ export async function runGovernedLoop<TFinal = string>(
   const maxIterations = options.maxIterations ?? 10;
   const sessionId = options.sessionId || ctx.identity.sessionId;
   const missionService = getMissionService();
-  const run = options.runId
-    ? { id: options.runId }
-    : await missionService.createRun({
-        sessionId,
-        missionId: ctx.identity.missionId,
-        type: options.runType || "workflow",
-        policyContext: {
-          orgId: ctx.identity.orgId || "",
-          roles: ctx.identity.roles,
-          permissions: ctx.identity.scopes,
-        },
-      });
+  const mission = ctx.identity.missionId
+    ? await missionService.getMission(ctx.identity.missionId)
+    : null;
+  const missionId = mission?.id;
+  const existingSession = await missionService.getSession(sessionId);
+  if (!existingSession) {
+    await missionService.createSession({
+      id: sessionId,
+      missionId,
+      preloadContext: Boolean(missionId),
+    });
+  }
+  const run = await missionService.createRun({
+    id: options.runId,
+    sessionId,
+    missionId,
+    type: options.runType || "workflow",
+    policyContext: {
+      orgId: ctx.identity.orgId || "",
+      roles: ctx.identity.roles,
+      permissions: ctx.identity.scopes,
+    },
+  });
   const traceManager = new TraceManager({
     runId: run.id,
     sessionId,
@@ -248,10 +259,18 @@ export async function runGovernedLoop<TFinal = string>(
 
           const outputObject =
             output && typeof output === "object"
-              ? (output as { _system_signal?: string; toolName?: string })
+              ? (output as {
+                  _system_signal?: string;
+                  toolName?: string;
+                  capabilityId?: string;
+                })
               : null;
-          if (outputObject && outputObject._system_signal === "load_tool") {
-            const newToolName = outputObject.toolName || "";
+          const signal = outputObject?._system_signal;
+          const shouldLoad =
+            signal === "load_tool" ||
+            (signal === "capability_loaded" && !!outputObject?.toolName);
+          if (shouldLoad) {
+            const newToolName = outputObject?.toolName || "";
             console.log(`[Loop] Dynamically loading tool: ${newToolName}`);
             const newTool = createToolWrapper(newToolName, ctx);
             const loaded =

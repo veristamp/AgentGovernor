@@ -1,6 +1,13 @@
 import { analyzeCode } from "../../core/audit";
 import { getMCPClientManager } from "../../core/mcp/manager";
+import {
+  createCapabilityLoaderTool,
+  createCapabilitySearchTool,
+} from "../../core/capabilities/discovery";
+import { CapabilityRegistry } from "../../core/capabilities/registry";
 import type { PolicyEngine } from "../../core/policy/engine";
+import { ToolRegistry } from "../../registry/tools/registry";
+import { SkillRegistry } from "../../registry/skills/registry";
 import { WorkflowRegistry } from "../../registry/workflows";
 // New Runtime Imports
 import { createAgentRuntime, type RuntimeContext } from "../../runtime/factory";
@@ -68,20 +75,28 @@ export class WorkflowAgent {
       workflowExamples: currentContext.workflowExamples ?? [],
       plan: "",
     };
-    const loopTools = createWorkflowLoopTools({
-      catalog: this.catalog,
-      workflows: this.workflows,
-      state: loopState,
-    });
+    const loopTools = createWorkflowLoopTools({ state: loopState });
 
-    const system = `${prompt.system}\n\n[WORKFLOW BUILDER]\nYou can iteratively discover skills and workflow examples before generating final workflow code.\nAlways use skills (L1), never raw tools (L0).\nPrefer asyncio.gather for independent skill calls.`;
+    const system = `${prompt.system}\n\n[WORKFLOW BUILDER]\nYou can iteratively discover skills and workflows before generating final workflow code.\nUse capability_search to discover skills or workflows, then system.load_capability to inspect details.\nAlways use skills (L1), never raw tools (L0).\nPrefer asyncio.gather for independent skill calls.`;
 
-    const user = `${prompt.user}\n\nIf you need more skills or examples, call the loop tools (skills.search, skills.get, workflows.search, update_plan).`;
+    const user = `${prompt.user}\n\nIf you need more skills or workflows, call capability_search and system.load_capability. Use update_plan as you refine.`;
 
     // --- MIGRATION: USE NEW RUNTIME ---
 
     // 1. Prepare Context
     const mcp = await getMCPClientManager();
+    const toolRegistry = new ToolRegistry();
+    const skillRegistry = new SkillRegistry();
+    const capabilityRegistry = new CapabilityRegistry({
+      toolRegistry,
+      skillRegistry,
+      workflowRegistry: this.workflows,
+      mcp,
+    });
+    const capabilityTools = [
+      createCapabilitySearchTool({ registry: capabilityRegistry }),
+      createCapabilityLoaderTool({ registry: capabilityRegistry }),
+    ];
 
     // Note: LlmClient is wrapping the model construction.
     // Ideally we pass the Vercel LanguageModel directly.
@@ -123,7 +138,7 @@ export class WorkflowAgent {
     // We need to adapt AgentLoopTool interface to the one expected by Runtime (which handles execute)
     // Wait, AgentRuntime uses AgentLoopTool which has execute().
     // createAgentRuntime creates proxy tools. We can just add our local tools.
-    runtime.tools = [...runtime.tools, ...loopTools];
+    runtime.tools = [...runtime.tools, ...capabilityTools, ...loopTools];
 
     // 3. Run Loop
     const runId = `workflow-run-${Date.now()}`;
