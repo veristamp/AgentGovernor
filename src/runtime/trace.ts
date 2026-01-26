@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "../registry/db";
-import { artifacts, runs, sessions, traceEvents } from "../registry/schema";
+import { db } from "../registry/db/db";
+import { artifacts, runs, sessions, traceEvents } from "../registry/db/schema";
 
 export interface TraceEvent {
 	id: string;

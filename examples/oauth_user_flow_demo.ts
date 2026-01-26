@@ -21,7 +21,7 @@
  *   bun run examples/oauth_user_flow_demo.ts
  */
 
-import { decodeJWT, MCPAdminClient, MCPAgentClient } from "../src/auth";
+import { decodeJWT, MCPAdminClient, MCPAgentClient } from "../src/core/auth";
 
 type OIDCDiscovery = {
 	issuer?: string;

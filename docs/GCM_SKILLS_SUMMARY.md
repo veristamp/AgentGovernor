@@ -62,7 +62,7 @@ Missions (L3)  → Runtime container: state, audit, retries, budget
 |-----------|----------|--------|
 | MCPClientManager | `src/mcp-client/manager.ts` | Working |
 | Policy Engine | `src/policy/engine.ts` | Working |
-| Auth SDK (JWT/JWKS) | `src/auth/` | Working |
+| Auth SDK (JWT/JWKS) | `src/core/auth/` | Working |
 | Socket Server | `src/socket-server/server.ts` | Working |
 | Python Skill Loader | `sandbox/runtime/skill_loader.py` | Working (needs binding fix) |
 | Python Skills | `skills/*/lib.py` | 3 skills exist |

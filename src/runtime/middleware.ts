@@ -1,7 +1,7 @@
 import type { LanguageModel } from "ai";
-import { getAuditLogger } from "../audit";
-import type { PolicyEngine } from "../policy/engine";
-import type { Identity } from "../policy/types";
+import { getAuditLogger } from "../core/audit";
+import type { PolicyEngine } from "../core/policy/engine";
+import type { Identity } from "../core/policy/types";
 
 // Extend Identity to include runtime session info
 export interface RuntimeIdentity extends Identity {

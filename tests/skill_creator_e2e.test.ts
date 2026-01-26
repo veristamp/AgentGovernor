@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { LlmClient } from "../src/agent";
-import { PolicyEngine } from "../src/policy";
-import { SkillCreatorAgent } from "../src/skill_creator";
+import { LlmClient } from "../src/agents/main";
+import { SkillCreatorAgent } from "../src/agents/skill_creator";
+import { PolicyEngine } from "../src/core/policy";
 
 // Use real LLM if key is present, otherwise fallback to fake
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;

@@ -1,5 +1,5 @@
-import { getMCPClientManager } from "../mcp-client/manager";
-import { DEFAULT_RULES, PolicyEngine } from "../policy/engine";
+import { getMCPClientManager } from "../core/mcp/manager";
+import { DEFAULT_RULES, PolicyEngine } from "../core/policy/engine";
 import { createAgentRuntime, type RuntimeContext } from "./factory";
 import { runGovernedLoop } from "./loop";
 import type { RuntimeIdentity } from "./middleware";

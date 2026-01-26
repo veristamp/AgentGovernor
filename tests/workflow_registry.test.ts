@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { WorkflowRegistry } from "../src/workflow_registry";
+import { WorkflowRegistry } from "../src/registry/workflows";
 
 const baseDir = resolve("workflows_gcm");
 

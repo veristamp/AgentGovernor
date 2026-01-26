@@ -21,8 +21,8 @@
  *   bun run examples/auth_e2e.ts
  */
 
-import { decodeJWT, MCPAdminClient, MCPAgentClient } from "../src/auth";
-import { MCPClientManager } from "../src/mcp-client";
+import { decodeJWT, MCPAdminClient, MCPAgentClient } from "../src/core/auth";
+import { MCPClientManager } from "../src/core/mcp";
 
 // =============================================================================
 // Configuration

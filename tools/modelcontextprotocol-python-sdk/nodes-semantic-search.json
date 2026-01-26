@@ -1,20 +1,22 @@
 {
-	"qualifiedName": "modelcontextprotocol-python-sdk.nodes-semantic-search",
-	"serverPrefix": "modelcontextprotocol-python-sdk",
-	"name": "nodes-semantic-search",
-	"originalName": "nodes-semantic-search",
-	"description": "Search for code functionalities across the repository modelcontextprotocol/python-sdk graph using semantic similarity based on natural language queries. This tool finds relevant functions, classes, methods, and other code entities that match the conceptual meaning of your query, even if they don't contain the exact keywords. Perfect for discovering related functionality, finding similar implementations, or exploring unfamiliar codebases. The search operates on the semantic understanding of code purpose and behavior.",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"query": {
-				"type": "string",
-				"minLength": 1,
-				"description": "A natural language description of the functionality you're looking for. Be specific about the behavior, purpose, or domain. Examples: 'user authentication and login', 'database connection pooling', 'file upload validation', 'payment processing logic', 'error handling middleware', 'data encryption utilities'"
-			}
-		},
-		"required": ["query"],
-		"additionalProperties": false,
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "modelcontextprotocol-python-sdk.nodes-semantic-search",
+  "serverPrefix": "modelcontextprotocol-python-sdk",
+  "name": "nodes-semantic-search",
+  "originalName": "nodes-semantic-search",
+  "description": "Search for code functionalities across the repository modelcontextprotocol/python-sdk graph using semantic similarity based on natural language queries. This tool finds relevant functions, classes, methods, and other code entities that match the conceptual meaning of your query, even if they don't contain the exact keywords. Perfect for discovering related functionality, finding similar implementations, or exploring unfamiliar codebases. The search operates on the semantic understanding of code purpose and behavior.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "description": "A natural language description of the functionality you're looking for. Be specific about the behavior, purpose, or domain. Examples: 'user authentication and login', 'database connection pooling', 'file upload validation', 'payment processing logic', 'error handling middleware', 'data encryption utilities'"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }

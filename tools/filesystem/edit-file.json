@@ -1,43 +1,49 @@
 {
-	"qualifiedName": "filesystem.edit-file",
-	"serverPrefix": "filesystem",
-	"name": "edit-file",
-	"originalName": "edit_file",
-	"description": "Structured replace edits for text files. Returns a unified diff. Use dry_run=true first.",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"path": {
-				"type": "string"
-			},
-			"edits": {
-				"type": "array",
-				"items": {
-					"type": "object",
-					"properties": {
-						"oldText": {
-							"type": "string"
-						},
-						"newText": {
-							"type": "string"
-						}
-					},
-					"required": ["oldText", "newText"],
-					"additionalProperties": false
-				},
-				"minItems": 1
-			},
-			"dry_run": {
-				"type": "boolean",
-				"default": true
-			},
-			"require_all": {
-				"type": "boolean",
-				"default": true
-			}
-		},
-		"required": ["path", "edits"],
-		"additionalProperties": false,
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "filesystem.edit-file",
+  "serverPrefix": "filesystem",
+  "name": "edit-file",
+  "originalName": "edit_file",
+  "description": "Structured replace edits for text files. Returns a unified diff. Use dry_run=true first.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "edits": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "oldText": {
+              "type": "string"
+            },
+            "newText": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "oldText",
+            "newText"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1
+      },
+      "dry_run": {
+        "type": "boolean",
+        "default": true
+      },
+      "require_all": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "required": [
+      "path",
+      "edits"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }

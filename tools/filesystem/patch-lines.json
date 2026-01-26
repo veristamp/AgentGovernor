@@ -1,40 +1,45 @@
 {
-	"qualifiedName": "filesystem.patch-lines",
-	"serverPrefix": "filesystem",
-	"name": "patch-lines",
-	"originalName": "patch_lines",
-	"description": "Replace a 1-based inclusive line range with new content. Optional sha256 guard on selected slice. Use dry_run=true first.",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"path": {
-				"type": "string"
-			},
-			"start_line": {
-				"type": "integer",
-				"exclusiveMinimum": 0
-			},
-			"end_line": {
-				"type": "integer",
-				"exclusiveMinimum": 0
-			},
-			"new_content": {
-				"type": "string"
-			},
-			"expected_sha256": {
-				"type": "string"
-			},
-			"allow_drift": {
-				"type": "boolean",
-				"default": false
-			},
-			"dry_run": {
-				"type": "boolean",
-				"default": true
-			}
-		},
-		"required": ["path", "start_line", "end_line", "new_content"],
-		"additionalProperties": false,
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "filesystem.patch-lines",
+  "serverPrefix": "filesystem",
+  "name": "patch-lines",
+  "originalName": "patch_lines",
+  "description": "Replace a 1-based inclusive line range with new content. Optional sha256 guard on selected slice. Use dry_run=true first.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "start_line": {
+        "type": "integer",
+        "exclusiveMinimum": 0
+      },
+      "end_line": {
+        "type": "integer",
+        "exclusiveMinimum": 0
+      },
+      "new_content": {
+        "type": "string"
+      },
+      "expected_sha256": {
+        "type": "string"
+      },
+      "allow_drift": {
+        "type": "boolean",
+        "default": false
+      },
+      "dry_run": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "required": [
+      "path",
+      "start_line",
+      "end_line",
+      "new_content"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }

@@ -16,6 +16,10 @@ export interface LaunchOptions {
 	code: string;
 	/** Path to Unix socket for MCP communication */
 	socketPath: string;
+	/** Optional skills directory to mount in sandbox */
+	skillsDir?: string;
+	/** Optional environment overrides */
+	env?: Record<string, string>;
 	/** Wall-clock timeout in seconds (default: 60) */
 	timeout?: number;
 	/** Memory limit in MB (default: 512) */
@@ -41,6 +45,8 @@ export async function launchSandbox(
 	const {
 		code,
 		socketPath,
+		skillsDir,
+		env,
 		timeout = 60,
 		memoryLimit = 512,
 		cpuLimit = 10,
@@ -64,6 +70,8 @@ export async function launchSandbox(
 			// Override socket path
 			"--bindmount",
 			`${socketPath}:/mcp.sock`,
+			"--env",
+			"MCP_SOCKET_PATH=/mcp.sock",
 			// Override runtime path
 			"--bindmount_ro",
 			`${runtimePath}:/runtime`,
@@ -75,6 +83,24 @@ export async function launchSandbox(
 			"python3",
 			"/runtime/runner.py",
 		];
+
+		if (skillsDir) {
+			const resolvedSkills = resolvePath(skillsDir);
+			args.splice(
+				args.indexOf("--") - 0,
+				0,
+				"--bindmount_ro",
+				`${resolvedSkills}:/skills`,
+				"--env",
+				"MCP_SKILLS_DIR=/skills",
+			);
+		}
+
+		if (env) {
+			for (const [key, value] of Object.entries(env)) {
+				args.splice(args.indexOf("--") - 0, 0, "--env", `${key}=${value}`);
+			}
+		}
 
 		const child = spawn("nsjail", args, {
 			stdio: ["pipe", "pipe", "pipe"],
@@ -156,6 +182,8 @@ export async function launchUnsafe(
 				...process.env,
 				PYTHONPATH: runtimePath,
 				MCP_SOCKET_PATH: socketPath,
+				MCP_SKILLS_DIR: options.skillsDir || process.env.MCP_SKILLS_DIR || "",
+				...(options.env ?? {}),
 			},
 		});
 

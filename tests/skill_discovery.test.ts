@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { platform } from "node:os";
 import { launchUnsafe } from "../sandbox/launcher";
-import { MCPClientManager } from "../src/mcp-client";
-import { createSocketServer } from "../src/socket-server";
+import { MCPClientManager } from "../src/core/mcp";
+import { createSocketServer } from "../src/core/socket";
 
 const getDefaultSocketPath = () => {
 	if (platform() === "win32") {

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { Agent, LlmClient } from "../src/agent";
-import { analyzeCode } from "../src/audit";
-import { PolicyEngine } from "../src/policy/engine";
+import { Agent, LlmClient } from "../src/agents/main";
+import { analyzeCode } from "../src/core/audit";
+import { PolicyEngine } from "../src/core/policy/engine";
 
 // Use real LLM if key is present, otherwise fallback to fake.
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;

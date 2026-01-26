@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { MCPClientManager } from "../src/mcp-client/index.js";
+import { MCPClientManager } from "../src/core/mcp/index.js";
 
 const prefix = "filesystem";
 

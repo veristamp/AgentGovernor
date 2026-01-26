@@ -1,6 +1,6 @@
 import type { LanguageModel } from "ai";
-import type { MCPClientManager } from "../mcp-client/manager";
-import type { PolicyEngine } from "../policy/engine";
+import type { MCPClientManager } from "../core/mcp/manager";
+import type { PolicyEngine } from "../core/policy/engine";
 import { type RuntimeIdentity, wrapGovernedModel } from "./middleware";
 import type { AgentLoopTool, AgentLoopToolContext } from "./types";
 

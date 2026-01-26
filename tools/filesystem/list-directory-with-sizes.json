@@ -1,23 +1,28 @@
 {
-	"qualifiedName": "filesystem.list-directory-with-sizes",
-	"serverPrefix": "filesystem",
-	"name": "list-directory-with-sizes",
-	"originalName": "list_directory_with_sizes",
-	"description": "List directory entries with sizes and summary. Only works within allowed directories.",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"path": {
-				"type": "string"
-			},
-			"sortBy": {
-				"type": "string",
-				"enum": ["name", "size"],
-				"default": "name"
-			}
-		},
-		"required": ["path"],
-		"additionalProperties": false,
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "filesystem.list-directory-with-sizes",
+  "serverPrefix": "filesystem",
+  "name": "list-directory-with-sizes",
+  "originalName": "list_directory_with_sizes",
+  "description": "List directory entries with sizes and summary. Only works within allowed directories.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "sortBy": {
+        "type": "string",
+        "enum": [
+          "name",
+          "size"
+        ],
+        "default": "name"
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }

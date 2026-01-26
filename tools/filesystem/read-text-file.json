@@ -1,26 +1,28 @@
 {
-	"qualifiedName": "filesystem.read-text-file",
-	"serverPrefix": "filesystem",
-	"name": "read-text-file",
-	"originalName": "read_text_file",
-	"description": "Read the complete contents of a file as UTF-8 text. Use head/tail to read only part of the file. Only works within allowed directories.",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"path": {
-				"type": "string"
-			},
-			"head": {
-				"type": "integer",
-				"exclusiveMinimum": 0
-			},
-			"tail": {
-				"type": "integer",
-				"exclusiveMinimum": 0
-			}
-		},
-		"required": ["path"],
-		"additionalProperties": false,
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "filesystem.read-text-file",
+  "serverPrefix": "filesystem",
+  "name": "read-text-file",
+  "originalName": "read_text_file",
+  "description": "Read the complete contents of a file as UTF-8 text. Use head/tail to read only part of the file. Only works within allowed directories.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "head": {
+        "type": "integer",
+        "exclusiveMinimum": 0
+      },
+      "tail": {
+        "type": "integer",
+        "exclusiveMinimum": 0
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }

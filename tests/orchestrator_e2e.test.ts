@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { LlmClient } from "../src/agent/llm_client";
-import { OrchestratorAgent } from "../src/agent/orchestrator";
-import { PolicyEngine } from "../src/policy/engine";
+import { LlmClient } from "../src/agents/main/llm_client";
+import { OrchestratorAgent } from "../src/agents/main/orchestrator";
+import { PolicyEngine } from "../src/core/policy/engine";
 
 // Use real LLM (required for Orchestrator native looping logic to work properly)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -30,7 +30,7 @@ test("Orchestrator Agent E2E: Routing -> Scout -> Execution", async () => {
 	});
 
 	const goal =
-		"Check the files in 'src/auth' directory and summarize what authentication methods are implemented.";
+		"Check the files in 'src/core/auth' directory and summarize what authentication methods are implemented.";
 
 	console.log(`[Test] Running Orchestrator with goal: "${goal}"`);
 
@@ -50,7 +50,7 @@ test("Orchestrator Agent E2E: Routing -> Scout -> Execution", async () => {
 	expect(result.code).toBeDefined();
 
 	// We expect the result to contain information about the auth methods found
-	// Since 'src/auth' contains jwt.ts, oauth_demo.py, admin-client.ts, etc.
+	// Since 'src/core/auth' contains jwt.ts, oauth_demo.py, admin-client.ts, etc.
 	// The summary should mention JWT, OAuth, or Admin/Agent Clients.
 
 	const contentLower = result.code.toLowerCase(); // 'code' field might contain text summary from scout

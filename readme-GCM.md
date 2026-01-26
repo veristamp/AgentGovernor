@@ -177,9 +177,9 @@ Rules can express org/team restrictions via `allowedOrgIds` / `allowedTeamIds`.
 - Saves successful workflows to `workflows_gcm/<orgId>/...` for reuse
 
 Key implementation:
-- `src/agent/agent.ts`
-- `src/agent/prompt_builder.ts`
-- `src/workflow_registry/*`
+- `src/agents/main/agent.ts`
+- `src/agents/main/prompt_builder.ts`
+- `src/registry/workflows/*`
 
 Tests:
 - `tests/agent_scope.test.ts`
@@ -216,19 +216,19 @@ Test:
 ### Start Server Mode
 
 ```bash
-bun run src/index.ts
+bun run src/cli/index.ts
 ```
 
 ### Execute a Workflow
 
 ```bash
-bun run src/index.ts --execute path/to/workflow.py
+bun run src/cli/index.ts --execute path/to/workflow.py
 ```
 
 ### Create a Skill (Admin)
 
 ```bash
-bun run src/index.ts --skill-create "Fetch docs and store them" --role mcp:docs-curator --org org_123 --team team_456
+bun run src/cli/index.ts --skill-create "Fetch docs and store them" --role mcp:docs-curator --org org_123 --team team_456
 ```
 
 Notes:

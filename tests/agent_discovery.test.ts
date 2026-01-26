@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { Agent, LlmClient } from "../src/agent";
-import { PolicyEngine } from "../src/policy";
-import { WorkflowRegistry } from "../src/workflow_registry";
+import { Agent, LlmClient } from "../src/agents/main";
+import { PolicyEngine } from "../src/core/policy";
+import { WorkflowRegistry } from "../src/registry/workflows";
 
 class FakeDiscoveryLlm extends LlmClient {
 	private callCount = 0;

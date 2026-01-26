@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { Agent, LlmClient } from "../src/agent";
-import { PolicyEngine } from "../src/policy/engine";
+import { Agent, LlmClient } from "../src/agents/main";
+import { PolicyEngine } from "../src/core/policy/engine";
 
 class FakeLlm extends LlmClient {
 	private callCount = 0;

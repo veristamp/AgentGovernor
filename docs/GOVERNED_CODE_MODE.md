@@ -269,10 +269,10 @@ Simple. No types. No complex imports. SLM-friendly.
 
 ```bash
 # Start in server mode
-bun run src/index.ts
+bun run src/cli/index.ts
 
 # Execute a workflow
-bun run src/index.ts --execute examples/test_workflow.py
+bun run src/cli/index.ts --execute examples/test_workflow.py
 
 # Analyze a workflow (static auditor only)
 python auditor/analyzer.py examples/test_workflow.py

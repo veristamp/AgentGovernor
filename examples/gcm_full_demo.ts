@@ -28,12 +28,12 @@ import {
 	launchSandbox,
 	launchUnsafe,
 } from "../sandbox/launcher";
-import { analyzeCode } from "../src/audit/bridge";
-import { decodeJWT, MCPAdminClient, MCPAgentClient } from "../src/auth";
-import { MCPClientManager } from "../src/mcp-client";
-import type { Manifest } from "../src/policy/types";
-import { createSocketServer } from "../src/socket-server";
-import { WorkflowRegistry } from "../src/workflow_registry";
+import { analyzeCode } from "../src/core/audit/bridge";
+import { decodeJWT, MCPAdminClient, MCPAgentClient } from "../src/core/auth";
+import { MCPClientManager } from "../src/core/mcp";
+import type { Manifest } from "../src/core/policy/types";
+import { createSocketServer } from "../src/core/socket";
+import { WorkflowRegistry } from "../src/registry/workflows";
 
 // =============================================================================
 // Configuration

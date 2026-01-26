@@ -1,21 +1,24 @@
 {
-	"qualifiedName": "filesystem.move-file",
-	"serverPrefix": "filesystem",
-	"name": "move-file",
-	"originalName": "move_file",
-	"description": "Move/rename a file or directory. Fails if destination exists. Only works within allowed directories.",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"source": {
-				"type": "string"
-			},
-			"destination": {
-				"type": "string"
-			}
-		},
-		"required": ["source", "destination"],
-		"additionalProperties": false,
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "filesystem.move-file",
+  "serverPrefix": "filesystem",
+  "name": "move-file",
+  "originalName": "move_file",
+  "description": "Move/rename a file or directory. Fails if destination exists. Only works within allowed directories.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string"
+      },
+      "destination": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "source",
+      "destination"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }

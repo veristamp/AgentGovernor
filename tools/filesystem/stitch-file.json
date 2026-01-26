@@ -1,54 +1,61 @@
 {
-	"qualifiedName": "filesystem.stitch-file",
-	"serverPrefix": "filesystem",
-	"name": "stitch-file",
-	"originalName": "stitch_file",
-	"description": "Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Use dry_run=true first.",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"grafts": {
-				"type": "array",
-				"items": {
-					"type": "object",
-					"properties": {
-						"source": {
-							"type": "string"
-						},
-						"start": {
-							"type": "integer",
-							"minimum": 0
-						},
-						"end": {
-							"type": "integer",
-							"minimum": 0
-						},
-						"comment": {
-							"type": "string"
-						},
-						"glue": {
-							"type": "string"
-						}
-					},
-					"required": ["source", "start", "end"],
-					"additionalProperties": false
-				},
-				"minItems": 1
-			},
-			"output_path": {
-				"type": "string"
-			},
-			"overwrite": {
-				"type": "boolean",
-				"default": false
-			},
-			"dry_run": {
-				"type": "boolean",
-				"default": true
-			}
-		},
-		"required": ["grafts", "output_path"],
-		"additionalProperties": false,
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "filesystem.stitch-file",
+  "serverPrefix": "filesystem",
+  "name": "stitch-file",
+  "originalName": "stitch_file",
+  "description": "Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Use dry_run=true first.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "grafts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "comment": {
+              "type": "string"
+            },
+            "glue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1
+      },
+      "output_path": {
+        "type": "string"
+      },
+      "overwrite": {
+        "type": "boolean",
+        "default": false
+      },
+      "dry_run": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "required": [
+      "grafts",
+      "output_path"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }

@@ -828,6 +828,568 @@
     }
   },
   {
+    "qualifiedName": "chunker.chunk-file",
+    "serverPrefix": "chunker",
+    "name": "chunk-file",
+    "originalName": "chunk_file",
+    "description": "Chunk a single file into structured JSON output.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "title": "File Path",
+          "type": "string"
+        },
+        "output_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Path"
+        },
+        "overlap_tokens": {
+          "default": 300,
+          "title": "Overlap Tokens",
+          "type": "integer"
+        },
+        "max_tokens_text": {
+          "default": 2000,
+          "title": "Max Tokens Text",
+          "type": "integer"
+        },
+        "split_code_max_lines": {
+          "default": 50,
+          "title": "Split Code Max Lines",
+          "type": "integer"
+        },
+        "split_table_rows": {
+          "default": 100,
+          "title": "Split Table Rows",
+          "type": "integer"
+        },
+        "use_treesitter": {
+          "default": true,
+          "title": "Use Treesitter",
+          "type": "boolean"
+        },
+        "emit_heading_chunks": {
+          "default": true,
+          "title": "Emit Heading Chunks",
+          "type": "boolean"
+        },
+        "inject_headers": {
+          "default": true,
+          "title": "Inject Headers",
+          "type": "boolean"
+        },
+        "include_chunks": {
+          "default": false,
+          "title": "Include Chunks",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "file_path"
+      ],
+      "title": "chunk_fileArguments"
+    }
+  },
+  {
+    "qualifiedName": "chunker.chunk-directory",
+    "serverPrefix": "chunker",
+    "name": "chunk-directory",
+    "originalName": "chunk_directory",
+    "description": "Chunk all supported files in a directory.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "directory": {
+          "title": "Directory",
+          "type": "string"
+        },
+        "recursive": {
+          "default": false,
+          "title": "Recursive",
+          "type": "boolean"
+        },
+        "extensions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Extensions"
+        },
+        "output_suffix": {
+          "default": "_structured.json",
+          "title": "Output Suffix",
+          "type": "string"
+        },
+        "overlap_tokens": {
+          "default": 300,
+          "title": "Overlap Tokens",
+          "type": "integer"
+        },
+        "max_tokens_text": {
+          "default": 2000,
+          "title": "Max Tokens Text",
+          "type": "integer"
+        },
+        "split_code_max_lines": {
+          "default": 50,
+          "title": "Split Code Max Lines",
+          "type": "integer"
+        },
+        "split_table_rows": {
+          "default": 100,
+          "title": "Split Table Rows",
+          "type": "integer"
+        },
+        "use_treesitter": {
+          "default": true,
+          "title": "Use Treesitter",
+          "type": "boolean"
+        },
+        "emit_heading_chunks": {
+          "default": true,
+          "title": "Emit Heading Chunks",
+          "type": "boolean"
+        },
+        "inject_headers": {
+          "default": true,
+          "title": "Inject Headers",
+          "type": "boolean"
+        },
+        "include_results": {
+          "default": false,
+          "title": "Include Results",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "directory"
+      ],
+      "title": "chunk_directoryArguments"
+    }
+  },
+  {
+    "qualifiedName": "chunker.chunk-content",
+    "serverPrefix": "chunker",
+    "name": "chunk-content",
+    "originalName": "chunk_content",
+    "description": "Chunk raw content without reading from disk.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "overlap_tokens": {
+          "default": 300,
+          "title": "Overlap Tokens",
+          "type": "integer"
+        },
+        "max_tokens_text": {
+          "default": 2000,
+          "title": "Max Tokens Text",
+          "type": "integer"
+        },
+        "split_code_max_lines": {
+          "default": 50,
+          "title": "Split Code Max Lines",
+          "type": "integer"
+        },
+        "split_table_rows": {
+          "default": 100,
+          "title": "Split Table Rows",
+          "type": "integer"
+        },
+        "use_treesitter": {
+          "default": true,
+          "title": "Use Treesitter",
+          "type": "boolean"
+        },
+        "emit_heading_chunks": {
+          "default": true,
+          "title": "Emit Heading Chunks",
+          "type": "boolean"
+        },
+        "inject_headers": {
+          "default": true,
+          "title": "Inject Headers",
+          "type": "boolean"
+        },
+        "include_chunks": {
+          "default": false,
+          "title": "Include Chunks",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "content",
+        "filename"
+      ],
+      "title": "chunk_contentArguments"
+    }
+  },
+  {
+    "qualifiedName": "conceptharvester.tag-chunk",
+    "serverPrefix": "conceptharvester",
+    "name": "tag-chunk",
+    "originalName": "tag_chunk",
+    "description": "Extract concepts from a single chunk (no DB resolution).",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "chunk": {
+          "additionalProperties": true,
+          "title": "Chunk",
+          "type": "object"
+        },
+        "root_topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Root Topic"
+        },
+        "disambiguate_noise": {
+          "default": true,
+          "title": "Disambiguate Noise",
+          "type": "boolean"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "base_threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Threshold"
+        },
+        "max_text_chars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Text Chars"
+        },
+        "include_scores": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Include Scores"
+        }
+      },
+      "required": [
+        "chunk"
+      ],
+      "title": "tag_chunkArguments"
+    }
+  },
+  {
+    "qualifiedName": "conceptharvester.tag-batch",
+    "serverPrefix": "conceptharvester",
+    "name": "tag-batch",
+    "originalName": "tag_batch",
+    "description": "Extract concepts from multiple chunks (no DB resolution).",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "chunks": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Chunks",
+          "type": "array"
+        },
+        "root_topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Root Topic"
+        },
+        "disambiguate_noise": {
+          "default": true,
+          "title": "Disambiguate Noise",
+          "type": "boolean"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "base_threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Threshold"
+        },
+        "max_text_chars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Text Chars"
+        },
+        "include_scores": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Include Scores"
+        }
+      },
+      "required": [
+        "chunks"
+      ],
+      "title": "tag_batchArguments"
+    }
+  },
+  {
+    "qualifiedName": "conceptharvester.harvest-chunk",
+    "serverPrefix": "conceptharvester",
+    "name": "harvest-chunk",
+    "originalName": "harvest_chunk",
+    "description": "Extract and resolve concepts to weighted graph edges (requires DB).",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "chunk": {
+          "additionalProperties": true,
+          "title": "Chunk",
+          "type": "object"
+        },
+        "root_topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Root Topic"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "base_threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Threshold"
+        },
+        "max_text_chars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Text Chars"
+        },
+        "include_scores": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Include Scores"
+        }
+      },
+      "required": [
+        "chunk"
+      ],
+      "title": "harvest_chunkArguments"
+    }
+  },
+  {
+    "qualifiedName": "conceptharvester.harvest-batch",
+    "serverPrefix": "conceptharvester",
+    "name": "harvest-batch",
+    "originalName": "harvest_batch",
+    "description": "Batch extract and resolve concepts to graph edges (requires DB).",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "chunks": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Chunks",
+          "type": "array"
+        },
+        "root_topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Root Topic"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Name"
+        },
+        "base_threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Threshold"
+        },
+        "max_text_chars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Text Chars"
+        },
+        "include_scores": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Include Scores"
+        }
+      },
+      "required": [
+        "chunks"
+      ],
+      "title": "harvest_batchArguments"
+    }
+  },
+  {
     "qualifiedName": "modelcontextprotocol-python-sdk.get-code",
     "serverPrefix": "modelcontextprotocol-python-sdk",
     "name": "get-code",
@@ -1017,6 +1579,95 @@
       ],
       "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "skills.docs-to-files.fetch-and-store",
+    "serverPrefix": "skills",
+    "name": "docs-to-files.fetch-and-store",
+    "originalName": "docs-to-files.fetch_and_store",
+    "description": "Resolve a library id, fetch docs, and write a markdown file.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "library": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "output_dir": {
+          "type": "string"
+        },
+        "file_name": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "library",
+        "topic",
+        "output_dir"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
+    }
+  },
+  {
+    "qualifiedName": "skills.fetch-and-store-documentation.fetch-and-store",
+    "serverPrefix": "skills",
+    "name": "fetch-and-store-documentation.fetch-and-store",
+    "originalName": "fetch_and_store_documentation.fetch_and_store",
+    "description": "Download a URL and write its contents to a file.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "file_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "file_path"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
+    }
+  },
+  {
+    "qualifiedName": "skills.repo-insight.analyze-repo",
+    "serverPrefix": "skills",
+    "name": "repo-insight.analyze-repo",
+    "originalName": "repo-insight.analyze_repo",
+    "description": "Search docs and code graph for insights, then store a summary.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "output_dir": {
+          "type": "string"
+        },
+        "note_key": {
+          "type": "string"
+        },
+        "write_report": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "query",
+        "output_dir",
+        "note_key"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
     }
   }
 ]

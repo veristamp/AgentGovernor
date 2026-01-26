@@ -1,22 +1,24 @@
 {
-	"qualifiedName": "filesystem.read-multiple-files",
-	"serverPrefix": "filesystem",
-	"name": "read-multiple-files",
-	"originalName": "read_multiple_files",
-	"description": "Read the contents of multiple text files. Continues on per-file errors. Only works within allowed directories.",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"paths": {
-				"type": "array",
-				"items": {
-					"type": "string"
-				},
-				"minItems": 1
-			}
-		},
-		"required": ["paths"],
-		"additionalProperties": false,
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "filesystem.read-multiple-files",
+  "serverPrefix": "filesystem",
+  "name": "read-multiple-files",
+  "originalName": "read_multiple_files",
+  "description": "Read the contents of multiple text files. Continues on per-file errors. Only works within allowed directories.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "paths": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      }
+    },
+    "required": [
+      "paths"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }

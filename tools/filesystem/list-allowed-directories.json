@@ -1,12 +1,12 @@
 {
-	"qualifiedName": "filesystem.list-allowed-directories",
-	"serverPrefix": "filesystem",
-	"name": "list-allowed-directories",
-	"originalName": "list_allowed_directories",
-	"description": "Show current allowed directories.",
-	"schema": {
-		"type": "object",
-		"properties": {},
-		"$schema": "http://json-schema.org/draft-07/schema#"
-	}
+  "qualifiedName": "filesystem.list-allowed-directories",
+  "serverPrefix": "filesystem",
+  "name": "list-allowed-directories",
+  "originalName": "list_allowed_directories",
+  "description": "Show current allowed directories.",
+  "schema": {
+    "type": "object",
+    "properties": {},
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
 }
