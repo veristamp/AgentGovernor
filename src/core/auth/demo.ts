@@ -45,7 +45,7 @@ const MY_AUDIENCE = "mcp://rag-demo-service";
 // =============================================================================
 
 function printHeader(title: string): void {
-	console.log(`\n${"=".repeat(70)}`);
+	console.log("\n" + "=".repeat(70));
 	console.log(`  ${title}`);
 	console.log("=".repeat(70));
 }
@@ -96,11 +96,6 @@ async function main(): Promise<number> {
 
 	const orgId = orgData.id ?? orgData.organization?.id;
 	console.log(`✅ Created org: ${orgId?.slice(0, 16)}...`);
-	if (!orgId) {
-		console.log("❌ Org creation returned no orgId");
-		console.log(`   Response: ${JSON.stringify(orgData)}`);
-		return 1;
-	}
 
 	// =========================================================================
 	// PHASE 2: REGISTRATION INVITE
@@ -109,7 +104,7 @@ async function main(): Promise<number> {
 
 	console.log("\n🎟️  Minting registration invite...");
 	const invite = await admin.createInvite({
-		orgId,
+		orgId: orgId!,
 		budget: 2,
 		ttlSeconds: 600,
 		allowedScopes: ["read:data", "write:data", "admin:delete"],
@@ -144,7 +139,7 @@ async function main(): Promise<number> {
 		console.log(
 			`   • Introspection Endpoint: ${metadata.introspectionEndpoint ?? "not specified"}`,
 		);
-	} catch (_e) {
+	} catch (e) {
 		console.log(
 			"⚠️  Resource metadata discovery not available (optional feature)",
 		);

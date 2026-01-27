@@ -40,6 +40,7 @@ import type {
 	TokenResponse,
 } from "./types";
 import { isTokenExpired } from "./types";
+import { getSdkHeaders } from "./version";
 
 /**
  * Registration options for public clients.
@@ -112,6 +113,7 @@ export class MCPAgentClient {
 				Authorization: `Bearer ${this.regJwt}`,
 				"Content-Type": "application/json",
 				Origin: this.authServer,
+				...getSdkHeaders(),
 			},
 			body: JSON.stringify(body),
 			signal: AbortSignal.timeout(this.timeout),
@@ -212,6 +214,7 @@ export class MCPAgentClient {
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
 				Origin: this.authServer,
+				...getSdkHeaders(),
 			},
 			body: formData,
 			signal: AbortSignal.timeout(this.timeout),
@@ -280,6 +283,7 @@ export class MCPAgentClient {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded",
+					...getSdkHeaders(),
 				},
 				body: new URLSearchParams({
 					token,
@@ -326,6 +330,9 @@ export class MCPAgentClient {
 		const response = await fetch(
 			`${baseUrl}/.well-known/oauth-protected-resource`,
 			{
+				headers: {
+					...getSdkHeaders(),
+				},
 				signal: AbortSignal.timeout(this.timeout),
 			},
 		);

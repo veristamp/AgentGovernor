@@ -7,6 +7,7 @@
 
 import { decodeJWTHeader } from "./jwt";
 import type { JWTClaims } from "./types";
+import { getSdkHeaders } from "./version";
 
 // =============================================================================
 // Types
@@ -63,6 +64,7 @@ export class JWKSManager {
 		try {
 			const discoveryResponse = await fetch(
 				`${this.authServer}/.well-known/openid-configuration`,
+				{ headers: { ...getSdkHeaders() } },
 			);
 			if (discoveryResponse.ok) {
 				const discovery = (await discoveryResponse.json()) as {
@@ -77,11 +79,13 @@ export class JWKSManager {
 		}
 
 		// Fetch JWKS
-		const response = await fetch(jwksUri);
+		const response = await fetch(jwksUri, { headers: { ...getSdkHeaders() } });
 
 		if (!response.ok) {
 			// Try fallback path
-			const fallbackResponse = await fetch(`${this.authServer}/api/auth/jwks`);
+			const fallbackResponse = await fetch(`${this.authServer}/api/auth/jwks`, {
+				headers: { ...getSdkHeaders() },
+			});
 			if (fallbackResponse.ok) {
 				const jwks = (await fallbackResponse.json()) as JWKS;
 				this.cache = { jwks, fetchedAt: now };

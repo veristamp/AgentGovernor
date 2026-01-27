@@ -58,27 +58,12 @@ export function isTokenExpired(token: MCPToken): boolean {
 // =============================================================================
 
 /**
- * Result of token validation.
- */
-export interface ValidationResult {
-	valid: boolean;
-	clientId?: string;
-	orgId?: string;
-	scopes: string[];
-	allowedAudiences?: string[];
-	roles?: string[];
-	clientType?: string;
-	riskLevel?: string;
-	error?: string;
-	errorCode?: string;
-}
-
-/**
  * Error codes returned by validation.
  */
 export type ValidationErrorCode =
 	| "missing_token"
 	| "invalid_token"
+	| "invalid_signature"
 	| "token_expired"
 	| "audience_mismatch"
 	| "insufficient_scope"
@@ -92,6 +77,22 @@ export type ValidationErrorCode =
 	| "rate_limit_exceeded";
 
 /**
+ * Result of token validation.
+ */
+export interface ValidationResult {
+	valid: boolean;
+	clientId?: string;
+	orgId?: string;
+	scopes: string[];
+	allowedAudiences?: string[];
+	roles?: string[];
+	clientType?: string;
+	riskLevel?: string;
+	error?: string;
+	errorCode?: ValidationErrorCode;
+}
+
+/**
  * Cached client status for kill switch enforcement.
  */
 export interface ClientStatus {
@@ -101,8 +102,6 @@ export interface ClientStatus {
 	allowedAudiences: string[];
 	allowedRoles?: string[];
 	orgId?: string;
-	clientType?: string;
-	riskLevel?: string;
 	fetchedAt: number;
 }
 

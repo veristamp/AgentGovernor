@@ -28,6 +28,7 @@
 
 import { MCPAuthError } from "./errors";
 import type { MCPAdminClientConfig } from "./types";
+import { getSdkHeaders } from "./version";
 
 export interface CreateInviteParams {
 	orgId: string;
@@ -92,6 +93,7 @@ export class MCPAdminClient {
 			headers: {
 				Origin: this.authServer,
 				Cookie: this.getCookieHeader(),
+				...getSdkHeaders(),
 			},
 			signal: AbortSignal.timeout(this.timeout),
 		});
@@ -128,6 +130,7 @@ export class MCPAdminClient {
 				"X-CSRF-Token": this.csrfToken ?? "",
 				Origin: this.authServer,
 				Cookie: this.getCookieHeader(),
+				...getSdkHeaders(),
 			},
 			body: JSON.stringify({ email, password }),
 			signal: AbortSignal.timeout(this.timeout),
@@ -154,6 +157,7 @@ export class MCPAdminClient {
 		const headers: Record<string, string> = {
 			Origin: this.authServer,
 			Cookie: this.getCookieHeader(),
+			...getSdkHeaders(),
 		};
 
 		// Add CSRF token for mutation methods

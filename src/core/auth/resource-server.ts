@@ -38,31 +38,18 @@ import type {
 	ClientStatus,
 	ClientStatusResponse,
 	IntrospectionResponse,
-	JWTClaims,
 	MCPResourceServerConfig,
 	ValidationResult,
 } from "./types";
 import { CLIENT_CACHE_TTL, isClientStatusStale } from "./types";
+import { getSdkHeaders } from "./version";
 
 export interface ValidateTokenOptions {
 	requiredScopes?: string[];
 	useJwt?: boolean;
 	requireActiveCheck?: boolean;
-	/** If true, verify JWT signature using JWKS (adds ~1-2ms first call, then cached) */
+	/** Verify JWT signature using JWKS (adds ~1-2ms first call, then cached) */
 	verifySignature?: boolean;
-}
-
-function normalizeRoles(roles?: string[] | string | null): string[] {
-	if (!roles) {
-		return [];
-	}
-	if (Array.isArray(roles)) {
-		return roles.filter(Boolean);
-	}
-	if (typeof roles === "string") {
-		return roles.split(" ").filter(Boolean);
-	}
-	return [];
 }
 
 export class MCPResourceServer {
@@ -102,7 +89,7 @@ export class MCPResourceServer {
 			requiredScopes,
 			useJwt = true,
 			requireActiveCheck = false,
-			verifySignature = false,
+			verifySignature = true,
 		} = options;
 
 		if (!token) {
@@ -149,7 +136,7 @@ export class MCPResourceServer {
 		requireActiveCheck: boolean = false,
 		verifySignature: boolean = false,
 	): Promise<ValidationResult> {
-		let claims: JWTClaims;
+		let claims;
 
 		// Optionally verify signature using JWKS
 		if (verifySignature) {
@@ -165,8 +152,8 @@ export class MCPResourceServer {
 			claims = verifyResult.claims;
 		} else {
 			// Just decode without verification (for trusted internal use)
-			const decoded = decodeJWT(token);
-			if (!decoded) {
+			claims = decodeJWT(token);
+			if (!claims) {
 				return {
 					valid: false,
 					scopes: [],
@@ -174,7 +161,6 @@ export class MCPResourceServer {
 					errorCode: "invalid_token",
 				};
 			}
-			claims = decoded;
 		}
 
 		// Check expiration
@@ -199,13 +185,6 @@ export class MCPResourceServer {
 
 		const clientId = extractClientId(claims);
 		const tokenScopes = extractScopes(claims);
-		const roles = normalizeRoles(
-			claims.roles as string[] | string | null | undefined,
-		);
-		const clientType =
-			typeof claims.client_type === "string" ? claims.client_type : undefined;
-		const riskLevel =
-			typeof claims.risk_level === "string" ? claims.risk_level : undefined;
 
 		// Check required scopes
 		if (requiredScopes && requiredScopes.length > 0) {
@@ -241,9 +220,6 @@ export class MCPResourceServer {
 			clientId,
 			orgId: claims.org_id as string | undefined,
 			scopes: tokenScopes,
-			roles,
-			clientType,
-			riskLevel,
 		};
 	}
 
@@ -316,11 +292,6 @@ export class MCPResourceServer {
 		const tokenScopes = (introspectResult.scope ?? "")
 			.split(" ")
 			.filter(Boolean);
-		const roles = normalizeRoles(
-			introspectResult.roles ?? clientStatus.allowedRoles ?? [],
-		);
-		const clientType = introspectResult.client_type ?? clientStatus.clientType;
-		const riskLevel = introspectResult.risk_level ?? clientStatus.riskLevel;
 		if (requiredScopes && requiredScopes.length > 0) {
 			const missing = requiredScopes.filter((s) => !tokenScopes.includes(s));
 			if (missing.length > 0) {
@@ -341,9 +312,6 @@ export class MCPResourceServer {
 			orgId: clientStatus.orgId,
 			scopes: tokenScopes,
 			allowedAudiences: clientStatus.allowedAudiences,
-			roles,
-			clientType,
-			riskLevel,
 		};
 	}
 
@@ -366,6 +334,7 @@ export class MCPResourceServer {
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded",
 					Origin: this.authServer,
+					...getSdkHeaders(),
 				},
 				body: formData,
 			},
@@ -393,13 +362,14 @@ export class MCPResourceServer {
 		// Fetch from admin API
 		const headers: Record<string, string> = {
 			Origin: this.authServer,
+			...getSdkHeaders(),
 		};
 
 		if (this.adminApiKey) {
 			headers["x-api-key"] = this.adminApiKey;
 		}
 		if (this.adminSessionCookie) {
-			headers.Cookie = this.adminSessionCookie;
+			headers["Cookie"] = this.adminSessionCookie;
 		}
 
 		try {
@@ -416,10 +386,7 @@ export class MCPResourceServer {
 					status: data.status as "active" | "disabled" | "revoked",
 					allowedScopes: data.allowedScopes ?? [],
 					allowedAudiences: data.allowedAudiences ?? [],
-					allowedRoles: data.allowedRoles ?? [],
 					orgId: data.orgId,
-					clientType: data.clientType,
-					riskLevel: data.riskLevel,
 					fetchedAt: Date.now() / 1000,
 				};
 

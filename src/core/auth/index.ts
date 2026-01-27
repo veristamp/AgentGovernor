@@ -133,3 +133,11 @@ export {
 	isTokenExpired,
 	JWKS_CACHE_TTL,
 } from "./types";
+// Versioning
+export {
+	getSdkHeaders,
+	SDK_LANGUAGE,
+	SDK_LANGUAGE_HEADER,
+	SDK_VERSION,
+	SDK_VERSION_HEADER,
+} from "./version";
