@@ -1,80 +1,81 @@
-import type { PolicyEngine } from "../core/policy/engine";
+import type { LanguageModel } from "ai";
 import type { MCPClientManager } from "../core/mcp/manager";
-import type { LlmClient } from "./main/llm_client";
-import type { AgentOptions } from "./main/agent";
-import { WorkflowAgent } from "./main/agent";
-import { OrchestratorAgent } from "./main/orchestrator";
-import type {
-  SkillCreatorDependencies,
-  SkillCreatorOptions,
-} from "./skill_creator/types";
-import { SkillCreatorAgent } from "./skill_creator/skill_creator_agent";
-import type { RecursiveAgentConfig } from "./recursive/agent";
-import { runRecursiveAgent } from "./recursive/agent";
+import type { PolicyEngine } from "../core/policy/engine";
+import { createAgentSpawner, type AgentConfig, spawnAndRun } from "../executor";
+import { buildRuntimeContext } from "../executor/context-builder";
+import type { RuntimeIdentity } from "../runtime/middleware";
+import { orchestratorConfig } from "./orchestrator";
+import { skillCreatorConfig } from "./skill-creator";
 
-export type AgentId =
-  | "orchestrator"
-  | "workflow"
-  | "skill_creator"
-  | "recursive";
+export type AgentId = "orchestrator" | "skill-creator" | "task";
 
-export const DEFAULT_AGENT_ID: AgentId = "orchestrator";
+interface AgentDeps {
+  identity: RuntimeIdentity;
+  mcp: MCPClientManager;
+  policy: PolicyEngine;
+  model: LanguageModel;
+}
 
-export type AgentConfigMap = {
-  orchestrator: {
-    llm: LlmClient;
-    policy: PolicyEngine;
-    model: string;
-    scoutModel?: string;
-  };
-  workflow: AgentOptions;
-  skill_creator: {
-    deps: SkillCreatorDependencies;
-    options: SkillCreatorOptions;
-  };
-  recursive: RecursiveAgentConfig;
-};
+/** Get declarative config for any agent */
+export function getAgentConfig(id: AgentId): AgentConfig {
+  switch (id) {
+    case "orchestrator": return orchestratorConfig;
+    case "skill-creator": return skillCreatorConfig;
+    case "task": return {
+      id: "task",
+      name: "Task Agent",
+      description: "Focused sub-task executor",
+      systemPrompt: "You are a focused task agent. Solve the specific task and return a concise result.",
+      allowedTools: [],
+      maxIterations: 8,
+      runType: "tool",
+    };
+    default: throw new Error(`Unknown agent: ${id}`);
+  }
+}
 
-export type AgentInstanceMap = {
-  orchestrator: OrchestratorAgent;
-  workflow: WorkflowAgent;
-  skill_creator: SkillCreatorAgent;
-  recursive: { run: (goal: string) => ReturnType<typeof runRecursiveAgent> };
-};
+/** Run an agent by ID with the new spawner - streamlined */
+export async function runAgent<T = unknown>(
+  id: AgentId,
+  deps: AgentDeps,
+  input: unknown,
+  options?: { runId?: string; maxIterations?: number }
+): Promise<{ final: T; iterations: number; trace: unknown[] }> {
+  const config = getAgentConfig(id);
+  if (options?.maxIterations) config.maxIterations = options.maxIterations;
 
+  const ctx = buildRuntimeContext(deps);
+  return spawnAndRun(config, ctx, input, { 
+    runId: options?.runId || `${id}-${Date.now()}`,
+    inheritMission: true 
+  });
+}
+
+/** Agent Manager - Clean declarative interface */
 export class AgentManager {
-  readonly defaultId: AgentId;
+  constructor(private defaultId: AgentId = "orchestrator") {}
 
-  constructor(defaultId: AgentId = DEFAULT_AGENT_ID) {
-    this.defaultId = defaultId;
-  }
+  list(): AgentId[] { return ["orchestrator", "skill-creator", "task"]; }
 
-  list(): AgentId[] {
-    return ["orchestrator", "workflow", "skill_creator", "recursive"];
+  async run<T = unknown>(
+    id: AgentId,
+    deps: AgentDeps,
+    input: unknown,
+    options?: { runId?: string; maxIterations?: number }
+  ): Promise<{ final: T; iterations: number; trace: unknown[] }> {
+    return runAgent(id, deps, input, options);
   }
+}
 
-  create<T extends AgentId>(
-    id: T,
-    config: AgentConfigMap[T],
-  ): AgentInstanceMap[T] {
-    if (id === "orchestrator") {
-      return new OrchestratorAgent(
-        config as AgentConfigMap["orchestrator"],
-      ) as AgentInstanceMap[T];
-    }
-    if (id === "workflow") {
-      return new WorkflowAgent(config as AgentOptions) as AgentInstanceMap[T];
-    }
-    if (id === "skill_creator") {
-      const cfg = config as AgentConfigMap["skill_creator"];
-      return new SkillCreatorAgent(
-        cfg.deps,
-        cfg.options,
-      ) as AgentInstanceMap[T];
-    }
-    const recursiveConfig = config as AgentConfigMap["recursive"];
-    return {
-      run: (goal: string) => runRecursiveAgent(goal, recursiveConfig),
-    } as AgentInstanceMap[T];
-  }
+/** Convenience: Create spawner with deps */
+export function createSpawner(deps: AgentDeps) {
+  return {
+    spawn: (config: AgentConfig, options?: { runId?: string }) => {
+      const ctx = buildRuntimeContext(deps);
+      const spawner = createAgentSpawner();
+      return spawner.spawn(config, ctx, { ...options, inheritMission: true });
+    },
+    runAgent: (id: AgentId, input: unknown, options?: { runId?: string; maxIterations?: number }) => 
+      runAgent(id, deps, input, options),
+  };
 }

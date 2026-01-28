@@ -1,243 +1,169 @@
-import type { LanguageModel } from "ai";
+/**
+ * AI SDK v6 Middleware
+ * 
+ * Provides caching and governance middleware for the AI SDK.
+ * Uses the LanguageModelV3Middleware interface from @ai-sdk/provider.
+ * 
+ * Usage:
+ * ```typescript
+ * import { wrapLanguageModel } from 'ai';
+ * import { cacheMiddleware, governanceMiddleware } from './middleware';
+ * 
+ * const wrappedModel = wrapLanguageModel({
+ *   model: openai('gpt-4o'),
+ *   middleware: cacheMiddleware,
+ * });
+ * ```
+ */
+
+import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3Middleware } from "@ai-sdk/provider";
+import { createHash } from "crypto";
 import { getAuditLogger } from "../core/audit";
 import type { PolicyEngine } from "../core/policy/engine";
 import type { Identity } from "../core/policy/types";
 
-// Extend Identity to include runtime session info
 export interface RuntimeIdentity extends Identity {
   sessionId: string;
-  missionId: string; // Links to high-level mission
+  missionId: string;
+}
+
+// ============================================================================
+// Caching Middleware
+// ============================================================================
+
+interface CacheEntry {
+  result: unknown;
+  timestamp: number;
+}
+
+interface CacheMiddlewareOptions {
+  ttlMs?: number;
+  maxEntries?: number;
+  namespace?: string;
 }
 
 /**
- * Governed Model Wrapper
- *
- * Wraps a Vercel AI SDK LanguageModel to enforce policy, inject caching
- * strategies transparently, and log audits.
+ * AI SDK v6 Caching Middleware
+ * 
+ * Implements LanguageModelV3Middleware for transparent LLM response caching.
  */
-export function wrapGovernedModel(
-  model: LanguageModel,
-  policy: PolicyEngine,
-  identity: RuntimeIdentity,
-): LanguageModel {
-  // Cast to any to access internal methods/properties generic way
-  const v1Model = model as any;
+export const cacheMiddleware = (options: CacheMiddlewareOptions = {}): LanguageModelV3Middleware => {
+  const { ttlMs = 3600000, maxEntries = 1000, namespace = "llm:cache" } = options;
+  const cache = new Map<string, CacheEntry>();
+
+  function getCacheKey(params: LanguageModelV3CallOptions): string {
+    const hash = createHash("sha256")
+      .update(JSON.stringify(params))
+      .digest("hex")
+      .slice(0, 32);
+    return `${namespace}:${hash}`;
+  }
+
+  function isExpired(timestamp: number): boolean {
+    return Date.now() - timestamp > ttlMs;
+  }
+
+  return {
+    specificationVersion: "v3" as const,
+
+    wrapGenerate: async ({ doGenerate, params }) => {
+      const cacheKey = getCacheKey(params);
+
+      const cached = cache.get(cacheKey);
+      if (cached && !isExpired(cached.timestamp)) {
+        console.log(`[Cache] Hit ${cacheKey.slice(0, 16)}`);
+        return cached.result as any;
+      }
+
+      console.log(`[Cache] Miss ${cacheKey.slice(0, 16)}`);
+      const result = await doGenerate();
+
+      // LRU eviction
+      if (cache.size >= maxEntries) {
+        const firstKey = cache.keys().next().value;
+        if (firstKey) cache.delete(firstKey);
+      }
+      cache.set(cacheKey, { result, timestamp: Date.now() });
+
+      return result;
+    },
+
+    wrapStream: async ({ doStream }) => {
+      // For streaming, skip caching by default (complex to implement correctly)
+      return doStream();
+    },
+  };
+};
+
+// ============================================================================
+// Governance Middleware
+// ============================================================================
+
+interface GovernanceMiddlewareOptions {
+  policy: PolicyEngine;
+  identity: RuntimeIdentity;
+}
+
+/**
+ * AI SDK v6 Governance Middleware
+ * 
+ * Adds policy checking and audit logging at the middleware level.
+ */
+export const governanceMiddleware = (options: GovernanceMiddlewareOptions): LanguageModelV3Middleware => {
+  const { policy, identity } = options;
   const auditLogger = getAuditLogger();
 
   return {
-    ...v1Model, // Preserve all properties
+    specificationVersion: "v3" as const,
 
-    doGenerate: async (options: any) => {
-      const start = Date.now();
-      const newOptions = await applyGovernance(
-        options,
-        v1Model.modelId,
-        policy,
+    wrapGenerate: async ({ doGenerate, params, model }) => {
+      const modelId = model?.modelId || "unknown";
+
+      // Policy check
+      const decision = await policy.check({
         identity,
-      );
+        action: "llm.generate",
+        resource: modelId,
+      });
 
-      try {
-        const result = await v1Model.doGenerate(newOptions);
-
-        // Audit Log (Success)
-        auditLogger.log({
-          timestamp: new Date(),
-          identityId: identity.id,
-          missionId: identity.missionId,
-          tool: "llm.generate",
-          args: {
-            model: v1Model.modelId,
-            inputTokens: result.usage.promptTokens,
-          },
-          result: {
-            outputTokens: result.usage.completionTokens,
-          },
-          latencyMs: Date.now() - start,
-        });
-
-        if (process.env.DEBUG_GOVERNANCE) {
-          console.log(
-            `[Governance] Generated: ${result.usage.promptTokens} -> ${result.usage.completionTokens}`,
-          );
-        }
-        return result;
-      } catch (e) {
-        // Audit Log (Failure)
-        auditLogger.log({
-          timestamp: new Date(),
-          identityId: identity.id,
-          missionId: identity.missionId,
-          tool: "llm.generate",
-          args: { model: v1Model.modelId },
-          error: String(e),
-          latencyMs: Date.now() - start,
-        });
-        throw e;
+      if (!decision.allowed) {
+        throw new Error(`Policy Violation: ${decision.reason}`);
       }
-    },
 
-    doStream: async (options: any) => {
       const start = Date.now();
-      const newOptions = await applyGovernance(
-        options,
-        v1Model.modelId,
-        policy,
-        identity,
-      );
+      const result = await doGenerate();
 
-      // Note: Streaming audit logging is harder because we don't know the full usage yet.
-      // We log the *start* of the stream here.
-      // The runtime loop should handle logging the full trace content.
-
+      // Audit log
       auditLogger.log({
         timestamp: new Date(),
         identityId: identity.id,
         missionId: identity.missionId,
-        tool: "llm.stream",
-        args: { model: v1Model.modelId },
+        tool: "llm.generate",
+        args: { model: modelId },
+        result: {
+          inputTokens: (result as any).usage?.promptTokens,
+          outputTokens: (result as any).usage?.completionTokens,
+        },
         latencyMs: Date.now() - start,
       });
 
-      return v1Model.doStream(newOptions);
+      return result;
     },
-  } as unknown as LanguageModel;
-}
 
-/**
- * Core Governance Logic
- * - Checks Policy
- * - Injects Cache Headers
- */
-async function applyGovernance(
-  options: any,
-  modelId: string,
-  policy: PolicyEngine,
-  identity: RuntimeIdentity,
-): Promise<any> {
-  // 1. Policy Check
-  const decision = await policy.check({
-    identity,
-    action: "llm.generate",
-    resource: modelId,
-  });
+    wrapStream: async ({ doStream, model }) => {
+      const modelId = model?.modelId || "unknown";
 
-  if (!decision.allowed) {
-    const reason = decision.reason || "policy denied request";
-    if (process.env.DEBUG_GOVERNANCE) {
-      console.warn(`[Governance] Policy Denied: ${reason}`);
-    }
-    throw new Error(`Policy Violation: ${reason}`);
-  }
+      const decision = await policy.check({
+        identity,
+        action: "llm.stream",
+        resource: modelId,
+      });
 
-  // 2. Cache Injection
-  const providerMetadata = options.providerMetadata || {};
-  const newOptions = { ...options, providerMetadata: { ...providerMetadata } };
-
-  // A. OpenAI Affinity
-  if (identity.sessionId) {
-    newOptions.providerMetadata.openai = {
-      ...newOptions.providerMetadata.openai,
-      promptCacheKey: identity.sessionId.slice(0, 16),
-      promptCacheRetention: "24h",
-    };
-  }
-
-  // B. Gemini Named Cache
-  if (identity.sessionId) {
-    newOptions.providerMetadata.google = {
-      ...newOptions.providerMetadata.google,
-      cachedContent: `session-${identity.sessionId.slice(0, 16)}`,
-    };
-  }
-
-  // C. Anthropic Explicit Caching
-  // Only apply if the model is likely Anthropic
-  const isAnthropic =
-    modelId.toLowerCase().includes("claude") ||
-    modelId.toLowerCase().includes("anthropic");
-
-  if (isAnthropic && options.prompt && Array.isArray(options.prompt)) {
-    let cacheMarksUsed = 0;
-    const MAX_MARKS = 2;
-
-    newOptions.prompt = options.prompt.map((msg: any, i: number) => {
-      // System Prompt
-      if (msg.role === "system" && cacheMarksUsed < MAX_MARKS) {
-        cacheMarksUsed++;
-        if (typeof msg.content === "string") {
-          return {
-            ...msg,
-            content: [
-              {
-                type: "text",
-                text: msg.content,
-                providerOptions: {
-                  anthropic: { cacheControl: { type: "ephemeral" } },
-                },
-              },
-            ],
-          };
-        }
-        if (Array.isArray(msg.content)) {
-          return {
-            ...msg,
-            content: msg.content.map((part: any) => ({
-              ...part,
-              providerOptions: {
-                ...part.providerOptions,
-                anthropic: { cacheControl: { type: "ephemeral" } },
-              },
-            })),
-          };
-        }
+      if (!decision.allowed) {
+        throw new Error(`Policy Violation: ${decision.reason}`);
       }
 
-      // First User Message
-      if (msg.role === "user" && i <= 2 && cacheMarksUsed < MAX_MARKS) {
-        const contentStr =
-          typeof msg.content === "string"
-            ? msg.content
-            : msg.content
-                .map((c: any) => (c.type === "text" ? c.text : ""))
-                .join("");
-
-        if (contentStr.length > 500) {
-          cacheMarksUsed++;
-          if (typeof msg.content === "string") {
-            return {
-              ...msg,
-              content: [
-                {
-                  type: "text",
-                  text: msg.content,
-                  providerOptions: {
-                    anthropic: { cacheControl: { type: "ephemeral" } },
-                  },
-                },
-              ],
-            };
-          }
-          if (Array.isArray(msg.content)) {
-            const newContent = [...msg.content];
-            const lastTextIdx = newContent.findLastIndex(
-              (p: any) => p.type === "text",
-            );
-            if (lastTextIdx !== -1) {
-              newContent[lastTextIdx] = {
-                ...newContent[lastTextIdx],
-                providerOptions: {
-                  ...newContent[lastTextIdx].providerOptions,
-                  anthropic: { cacheControl: { type: "ephemeral" } },
-                },
-              };
-            }
-            return { ...msg, content: newContent };
-          }
-        }
-      }
-      return msg;
-    });
-  }
-
-  return newOptions;
-}
+      return doStream();
+    },
+  };
+};

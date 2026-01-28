@@ -1,4 +1,6 @@
 import type { TraceEvent } from "./trace";
+import { MemoryManager, type MemoryConfig } from "./memory-manager";
+import { addCacheControlToMessages, extractCacheStats, type CacheControlOptions } from "./cache-control";
 
 // Compatible with Vercel AI SDK Core message format
 export type CoreMessage =
@@ -7,13 +9,84 @@ export type CoreMessage =
   | { role: "assistant"; content: string | Array<any> }
   | { role: "tool"; content: Array<any> };
 
+/**
+ * AI SDK v6 Context Manager
+ * 
+ * Provides message composition utilities that align with AI SDK v6 patterns.
+ * Use prepareStep() in generateText() for per-step context management.
+ * 
+ * This class provides utilities for:
+ * - compose(): Create initial message list from system + user + history
+ * - prepareStep(): AI SDK v6 hook for context pruning
+ * - estimateTokens(): Token estimation for context budgeting
+ * 
+ * Enhanced with:
+ * - MemoryManager for intelligent message prioritization
+ * - Cache control for provider-specific prompt caching
+ * - Analytics integration for performance monitoring
+ */
 export class ContextManager {
   private maxTokens: number;
   private reserveTokens: number;
+  private memoryManager: MemoryManager;
+  private enableCache: boolean;
 
-  constructor(maxTokens = 128000, reserveTokens = 4000) {
+  constructor(
+    maxTokens = 128000,
+    reserveTokens = 4000,
+    memoryConfig?: Partial<MemoryConfig>,
+    cacheOptions?: CacheControlOptions
+  ) {
     this.maxTokens = maxTokens;
     this.reserveTokens = reserveTokens;
+    this.memoryManager = new MemoryManager(memoryConfig);
+    this.enableCache = cacheOptions?.enableAnthropicCache || false;
+  }
+
+  /**
+   * AI SDK v6 prepareStep hook implementation
+   * 
+   * Use this in generateText() options:
+   * ```typescript
+   * const result = await generateText({
+   *   model,
+   *   tools,
+   *   prepareStep: ctxManager.prepareStep({ maxMessages: 50, keepLast: 20 }),
+   * });
+   * ```
+   * 
+   * Enhanced with:
+   * - MemoryManager for intelligent message selection
+   * - Cache control for provider-specific caching
+   */
+  public prepareStep(options: { 
+    maxMessages?: number; 
+    keepLast?: number;
+    enableCompression?: boolean;
+  } = {}) {
+    const maxMessages = options.maxMessages ?? 120;
+    const keepLast = options.keepLast ?? 40;
+    const enableCompression = options.enableCompression ?? true;
+
+    return async ({ messages }: { stepNumber: number; messages: CoreMessage[] }): Promise<{ messages: CoreMessage[] }> => {
+      // Apply memory management for intelligent pruning
+      let prunedMessages = this.memoryManager.prepareMessages({
+        messages,
+        maxMessages,
+        keepLast,
+        enableCompression,
+      });
+
+      // Apply cache control if enabled
+      if (this.enableCache) {
+        prunedMessages = addCacheControlToMessages({
+          messages: prunedMessages,
+          options: { enableAnthropicCache: true },
+        });
+      }
+
+      return { messages: prunedMessages };
+    };
   }
 
   public compose(params: {
@@ -46,17 +119,13 @@ export class ContextManager {
     }
 
     // 3. History / Trace Events (Priority #3, Newest First)
-    // We work backwards from the most recent event
     const contextMessages: CoreMessage[] = [];
-    // Clone and reverse to process newest -> oldest
     const reversedHistory = [...params.history].reverse();
 
     for (const event of reversedHistory) {
-      // Convert TraceEvent to CoreMessage
       const msg = this.traceToMessage(event);
       if (!msg) continue;
 
-      // Estimate tokens (approximate for objects)
       const contentStr =
         typeof msg.content === "string"
           ? msg.content
@@ -68,7 +137,6 @@ export class ContextManager {
         contextMessages.unshift(msg);
         currentTokens += tokens;
       } else if (currentTokens + 100 <= budget) {
-        // Try to summarize/compress if near limit
         const summary = this.summarizeEvent(event);
         const sumContentStr =
           typeof summary.content === "string"
@@ -80,10 +148,10 @@ export class ContextManager {
           contextMessages.unshift(summary);
           currentTokens += sumTokens;
         } else {
-          break; // Full
+          break;
         }
       } else {
-        break; // Full
+        break;
       }
     }
 
@@ -132,7 +200,7 @@ export class ContextManager {
         };
       case "error":
         return {
-          role: "user", // Errors act as system/user feedback
+          role: "user",
           content: `ERROR: ${event.content.error}`,
         };
       case "final":
@@ -163,8 +231,21 @@ export class ContextManager {
         ],
       };
     }
-    // Default fallback
     const msg = this.traceToMessage(event);
     return msg || { role: "assistant", content: "..." };
+  }
+
+  /**
+   * Get memory manager instance
+   */
+  getMemoryManager(): MemoryManager {
+    return this.memoryManager;
+  }
+
+  /**
+   * Extract cache statistics from AI SDK result
+   */
+  extractCacheStats(result: any) {
+    return extractCacheStats(result);
   }
 }

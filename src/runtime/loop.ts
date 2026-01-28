@@ -1,16 +1,16 @@
-import { streamText } from "ai";
+import { generateText, stepCountIs, type ToolSet } from "ai";
 import { z } from "zod";
 import type { AgentRuntime, RuntimeContext } from "./factory";
 import { type TraceEvent, TraceManager } from "./trace";
-import type {
-  AgentLoopRunOptions,
-  AgentLoopTool,
-  AgentLoopToolContext,
-} from "./types";
-import { type ToolCall, type ToolResult } from "./message";
+import type { AgentLoopTool } from "./types";
 import { SessionManager } from "./session_manager";
+import { ContextManager } from "./context";
+import { AnalyticsManager } from "./analytics";
+import { calculateCacheSavings } from "./cache-control";
 
-export interface GovernedLoopOptions extends AgentLoopRunOptions {
+export interface GovernedLoopOptions {
+  maxIterations?: number;
+  toolCallTimeoutMs?: number;
   runId?: string;
   sessionId?: string;
   runType?: "workflow" | "skill" | "tool" | "research";
@@ -18,51 +18,70 @@ export interface GovernedLoopOptions extends AgentLoopRunOptions {
     maxMessages?: number;
     keepLast?: number;
   };
-  validateFinal?: (
-    value: unknown,
-  ) =>
-    | { ok: true; value: unknown }
-    | { ok: false; error: string }
-    | Promise<{ ok: true; value: unknown } | { ok: false; error: string }>;
+  enableCache?: boolean;
+  enableAnalytics?: boolean;
+  validateFinal?: (value: unknown) => Promise<{ ok: true; value: unknown } | { ok: false; error: string }>;
 }
 
-/**
- * Creates an executable AgentLoopTool from a name and RuntimeContext.
- * Used for dynamic tool loading.
- */
-function createToolWrapper(
-  name: string,
-  ctx: RuntimeContext,
-): AgentLoopTool | null {
-  const capabilities = ctx.mcp.getCapabilities();
-  const toolDef = capabilities.tools.get(name);
-  if (!toolDef) return null;
+/** Shared ContextManager instance for AI SDK v6 prepareStep hooks */
+const contextManager = new ContextManager(
+  128000, // maxTokens
+  4000, // reserveTokens
+  {
+    maxEpisodicMessages: 50,
+    importanceThreshold: 0.3,
+    compressThreshold: 30,
+    alwaysKeepLast: 5,
+  },
+  {
+    enableAnthropicCache: false, // Disabled by default, enable per-session
+  }
+);
 
-  return {
-    name: toolDef.name,
-    description: toolDef.description || "",
-    inputSchema: toolDef.inputSchema ?? {},
-    execute: async (
-      args: Record<string, unknown>,
-      _toolCtx: AgentLoopToolContext,
-    ) => {
-      return await ctx.mcp.executeAction(
-        {
-          actionType: "tool",
-          actionName: name,
-          arguments: args,
-        },
-        {
-          identityId: ctx.identity.id,
-          orgId: ctx.identity.orgId,
-          roles: ctx.identity.roles,
-          scopes: ctx.identity.scopes,
-          missionId: ctx.identity.missionId,
-          sessionId: ctx.identity.sessionId,
-        },
-      );
-    },
-  };
+/** Shared AnalyticsManager instance */
+const analyticsManager = new AnalyticsManager();
+
+/** Convert tools to AI SDK format with automatic execution through Gate 2 */
+function convertToolsToToolSet(tools: AgentLoopTool[], ctx: RuntimeContext): ToolSet {
+  const toolSet: ToolSet = {};
+
+  for (const t of tools) {
+    const safeName = t.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    toolSet[safeName] = {
+      description: t.description,
+      parameters: z.object(t.inputSchema as any).passthrough(),
+      execute: async (args: Record<string, unknown>) => t.execute(args, {
+        orgId: ctx.identity.orgId,
+        roles: ctx.identity.roles,
+        scopes: ctx.identity.scopes,
+        missionId: ctx.identity.missionId,
+        sessionId: ctx.identity.sessionId,
+      }),
+    } as any;
+  }
+
+  return toolSet;
+}
+
+/** Sanitize user prompt to prevent injection attacks */
+function sanitizePrompt(prompt: string): string {
+  // Remove potential system prompt injection attempts
+  return prompt
+    .replace(/<\/?system>/gi, "")
+    .replace(/<\/?instruction>/gi, "")
+    .slice(0, 100000); // Max 100k chars
+}
+
+/** Validate system prompt for security */
+function validateSystemPrompt(prompt: string): void {
+  if (prompt.length > 50000) {
+    throw new Error("System prompt exceeds maximum length of 50000 characters");
+  }
+  // Check for potentially dangerous content
+  const dangerous = ["ignore previous", "disregard all", "system override"];
+  if (dangerous.some(d => prompt.toLowerCase().includes(d))) {
+    throw new Error("System prompt contains potentially dangerous content");
+  }
 }
 
 export async function runGovernedLoop<TFinal = string>(
@@ -71,13 +90,28 @@ export async function runGovernedLoop<TFinal = string>(
   systemPrompt: string,
   userPrompt: string,
   options: GovernedLoopOptions = {},
-): Promise<{
-  final: TFinal;
-  iterations: number;
-  trace: TraceEvent[];
+): Promise<{ 
+  final: TFinal; 
+  iterations: number; 
+  trace: TraceEvent[]; 
+  cacheStats?: any;
+  performanceMetrics?: any;
 }> {
-  const maxIterations = options.maxIterations ?? 10;
+  // Security: Validate inputs
+  validateSystemPrompt(systemPrompt);
+  const sanitizedUserPrompt = sanitizePrompt(userPrompt);
+  
+  const maxIterations = Math.min(options.maxIterations ?? 10, 50); // Hard cap at 50
   const sessionId = options.sessionId || ctx.identity.sessionId;
+  const enableCache = options.enableCache ?? false;
+  const enableAnalytics = options.enableAnalytics ?? false;
+  
+  // Start analytics if enabled
+  let sessionAnalytics = null;
+  if (enableAnalytics) {
+    sessionAnalytics = analyticsManager.startSession(sessionId);
+  }
+  
   const session = await SessionManager.start({
     sessionId,
     missionId: ctx.identity.missionId,
@@ -89,270 +123,169 @@ export async function runGovernedLoop<TFinal = string>(
       permissions: ctx.identity.scopes,
     },
   });
+
   const traceManager = new TraceManager({
     runId: session.runId,
     sessionId: session.sessionId,
   });
 
-  console.log(`[Loop] Starting run (Session: ${traceManager.sessionId})`);
+  console.log(`[Loop] Starting ${options.runType || "run"} (session: ${traceManager.sessionId})`);
+  console.log(`[Loop] Cache: ${enableCache ? 'enabled' : 'disabled'}, Analytics: ${enableAnalytics ? 'enabled' : 'disabled'}`);
   await session.ensureSystem(systemPrompt);
-  await session.addUser(userPrompt);
+  await session.addUser(sanitizedUserPrompt);
 
-  let currentIteration = 0;
-  let finished = false;
-  let finalValue: unknown = null;
+  const tools = convertToolsToToolSet(runtime.tools, ctx);
 
   try {
-    while (currentIteration < maxIterations && !finished) {
-      const iteration = currentIteration;
+    const startTime = Date.now();
+    const result = await generateText({
+      model: runtime.model,
+      system: systemPrompt,
+      prompt: sanitizedUserPrompt,
+      tools,
+      stopWhen: stepCountIs(maxIterations),
 
-      // 1. Prepare Tools (Re-evaluate every loop to capture dynamic additions)
-      const sdkTools: Record<string, any> = {};
-      const nameMap = new Map<string, string>();
-      const reverseNameMap = new Map<string, string>();
-
-      for (const t of runtime.tools) {
-        let safeName = t.name.replace(/[^a-zA-Z0-9_-]/g, "_");
-        let suffix = 1;
-        while (reverseNameMap.has(safeName)) {
-          safeName = `${safeName}_${suffix}`;
-          suffix += 1;
+      onStepFinish: async (stepResult) => {
+        const stepIndex = (stepResult as any).stepNumber || 0;
+        const stepLatency = Date.now() - startTime;
+        
+        // Record analytics
+        if (enableAnalytics && sessionAnalytics) {
+          analyticsManager.recordStep(
+            sessionAnalytics.sessionId,
+            stepResult.usage?.totalTokens || 0,
+            stepLatency
+          );
         }
-        nameMap.set(t.name, safeName);
-        reverseNameMap.set(safeName, t.name);
-
-        sdkTools[safeName] = {
-          description: t.description,
-          parameters: z.object({}).passthrough(), // AI SDK uses 'parameters' or 'inputSchema'? Using z object for safety
-          // We do NOT attach 'execute' here because we want manual control.
-          // Vercel AI SDK 'generateText' will simply return the tool call if execute is missing/optional?
-          // Actually, if we provide tools to generateText, it expects them to be "Tool" objects from the SDK.
-          // We will execute manually.
-        };
-      }
-
-      await session.compact({
-        maxMessages: options.compaction?.maxMessages ?? 120,
-        keepLast: options.compaction?.keepLast ?? 40,
-      });
-      const messages = session.messages();
-      const stream = streamText({
-        model: runtime.model,
-        tools: sdkTools,
-        // @ts-expect-error - maxSteps is supported in AI SDK but types might be stale
-        maxSteps: 1,
-        messages: messages,
-      });
-
-      const textResult = await Promise.resolve(stream.text)
-        .then((value) => ({ ok: true as const, value }))
-        .catch((error: unknown) => ({
-          ok: false as const,
-          error: String(error),
-        }));
-
-      if (!textResult.ok) {
-        await traceManager.emit({
-          iteration,
-          type: "error",
-          content: { error: textResult.error },
-        });
-        throw new Error(textResult.error);
-      }
-
-      const text = textResult.value;
-      const toolCalls = await stream.toolCalls;
-      const calls = (toolCalls || []).map((call) => ({
-        toolName: call.toolName,
-        input: call.input,
-        toolCallId: call.toolCallId,
-      }));
-
-      await session.addAssistant(text || "", calls);
-
-      if (calls.length > 0) {
-        const toolResults: ToolResult[] = [];
-        const timeoutMs = options.toolCallTimeoutMs;
-        const execute = async (call: ToolCall, index: number) => {
-          const originalName =
-            reverseNameMap.get(call.toolName) || call.toolName;
-          const toolImpl = runtime.tools.find((t) => t.name === originalName);
-          const callId =
-            typeof call.toolCallId === "string"
-              ? call.toolCallId
-              : `call_${iteration}_${index}`;
-          const args =
-            call.input && typeof call.input === "object"
-              ? (call.input as Record<string, unknown>)
-              : {};
-
-          const callPromise = toolImpl
-            ? toolImpl.execute(args, {
-                orgId: ctx.identity.orgId,
-                roles: ctx.identity.roles,
-                scopes: ctx.identity.scopes,
-                missionId: ctx.identity.missionId,
-                sessionId: ctx.identity.sessionId,
-              })
-            : Promise.resolve(`Error: Tool ${originalName} not found`);
-
-          const timeoutPromise = timeoutMs
-            ? new Promise((_, reject) => {
-                setTimeout(
-                  () => reject(new Error(`Tool timeout: ${originalName}`)),
-                  timeoutMs,
-                );
-              })
-            : callPromise;
-
-          const outputResult = await Promise.race([callPromise, timeoutPromise])
-            .then((value) => ({ ok: true as const, value }))
-            .catch((error: unknown) => ({
-              ok: false as const,
-              error: String(error),
-            }));
-
-          const output = outputResult.ok
-            ? outputResult.value
-            : `Error: ${outputResult.error}`;
-
+        
+        const toolCalls = (stepResult as any).toolCalls || [];
+        for (const call of toolCalls) {
           await traceManager.emit({
-            iteration,
+            iteration: stepIndex,
             type: "tool_call",
             content: {
-              name: originalName,
-              arguments: args,
-              toolCallId: callId,
+              name: call.toolName,
+              arguments: call.args || call.input,
+              toolCallId: call.toolCallId,
             },
-            reasoning: text,
           });
+        }
 
+        const toolResults = (stepResult as any).toolResults || [];
+        for (const tr of toolResults) {
           await traceManager.emit({
-            iteration,
+            iteration: stepIndex,
             type: "tool_result",
             content: {
-              name: originalName,
-              result: output,
-              toolCallId: callId,
+              name: tr.toolName,
+              result: tr.result ?? tr.value ?? tr,
+              toolCallId: tr.toolCallId,
             },
           });
-
-          const outputObject =
-            output && typeof output === "object"
-              ? (output as {
-                  _system_signal?: string;
-                  toolName?: string;
-                  capabilityId?: string;
-                })
-              : null;
-          const signal = outputObject?._system_signal;
-          const shouldLoad =
-            signal === "load_tool" ||
-            (signal === "capability_loaded" && !!outputObject?.toolName);
-          if (shouldLoad) {
-            const newToolName = outputObject?.toolName || "";
-            console.log(`[Loop] Dynamically loading tool: ${newToolName}`);
-            const newTool = createToolWrapper(newToolName, ctx);
-            const loaded =
-              newTool && !runtime.tools.some((t) => t.name === newTool.name);
-            if (loaded && newTool) runtime.tools.push(newTool);
-            const systemMessage = loaded
-              ? `System: Tool '${newToolName}' loaded successfully. You can now use it.`
-              : `System: Failed to load tool '${newToolName}'. It may not exist or access is denied.`;
-            return {
-              toolCallId: callId,
-              toolName: call.toolName,
-              result: systemMessage,
-            };
-          }
-
-          if (!outputResult.ok) {
-            await traceManager.emit({
-              iteration,
-              type: "error",
-              content: { error: outputResult.error, tool: originalName },
-            });
-          }
-
-          return {
-            toolCallId: callId,
-            toolName: call.toolName,
-            result: output,
-          };
-        };
-
-        const results = await Promise.all(
-          calls.map((call, index) => execute(call, index)),
-        );
-
-        for (const r of results) {
-          toolResults.push({
-            toolCallId: r.toolCallId,
-            toolName: r.toolName,
-            result: r.result,
-          });
-        }
-        await session.addToolResults(toolResults);
-      }
-
-      if (calls.length === 0) {
-        finalValue = text;
-        const parsed = (() => {
-          const clean = (text || "").trim();
-          const isJson = clean.startsWith("{") || clean.startsWith("[");
-          if (isJson) return JSON.parse(clean);
-          const jsonMatch =
-            clean.match(/```json\n([\s\S]*?)\n```/) ||
-            clean.match(/```\n([\s\S]*?)\n```/);
-          if (jsonMatch && jsonMatch[1]) return JSON.parse(jsonMatch[1]);
-          return undefined;
-        })();
-
-        const parsedValue = parsed === undefined ? finalValue : parsed;
-        finalValue = parsedValue;
-
-        const validated = options.validateFinal
-          ? await options.validateFinal(finalValue)
-          : ({ ok: true as const, value: finalValue } as const);
-
-        if (!validated.ok) {
-          await traceManager.emit({
-            iteration,
-            type: "error",
-            content: { error: validated.error },
-          });
-          throw new Error(`Validation Failed: ${validated.error}`);
         }
 
-        finalValue = validated.value;
-        finished = true;
-      }
+        await traceManager.emit({
+          iteration: stepIndex,
+          type: "event",
+          content: {
+            event: "step_complete",
+            finishReason: stepResult.finishReason,
+            usage: stepResult.usage,
+          },
+        });
+      },
 
-      await session.compact({
-        maxMessages: options.compaction?.maxMessages ?? 120,
-        keepLast: options.compaction?.keepLast ?? 40,
-      });
-      currentIteration++;
+      prepareStep: contextManager.prepareStep({
+        ...options.compaction,
+        enableCompression: true,
+      }),
+
+      abortSignal: options.toolCallTimeoutMs
+        ? AbortSignal.timeout(options.toolCallTimeoutMs)
+        : undefined,
+    });
+
+    let finalValue: unknown = result.text;
+
+    // Parse JSON if present
+    const parsed = (() => {
+      const clean = (result.text || "").trim();
+      try {
+        if (clean.startsWith("{") || clean.startsWith("[")) return JSON.parse(clean);
+        const match = clean.match(/```(?:json)?\n([\s\S]*?)\n```/);
+        if (match?.[1]) return JSON.parse(match[1]);
+      } catch {}
+      return undefined;
+    })();
+    if (parsed !== undefined) finalValue = parsed;
+
+    // Validate final result
+    if (options.validateFinal) {
+      const validated = await options.validateFinal(finalValue);
+      if (!validated.ok) {
+        await traceManager.emit({ iteration: result.steps.length, type: "error", content: { error: validated.error } });
+        await session.finish("failed");
+        if (enableAnalytics) analyticsManager.recordError();
+        throw new Error(`Validation failed: ${validated.error}`);
+      }
+      finalValue = validated.value;
     }
-  } catch (e) {
+
+    await traceManager.emit({ iteration: result.steps.length, type: "final", content: { result: finalValue } });
+    await session.finish("completed");
+
+    // Extract cache statistics
+    const cacheStats = contextManager.extractCacheStats(result);
+    if (cacheStats) {
+      console.log(`[Cache] Hit rate: ${(cacheStats.cacheHitRate * 100).toFixed(1)}%`);
+      console.log(`[Cache] Created: ${cacheStats.cacheCreationTokens}, Read: ${cacheStats.cacheReadTokens}`);
+      
+      const savings = calculateCacheSavings(cacheStats);
+      console.log(`[Cache] Cost savings: $${savings.costSavings.toFixed(4)}, Latency savings: ${savings.latencySavings.toFixed(0)}ms`);
+      
+      // Record cache stats in analytics
+      if (enableAnalytics && sessionAnalytics) {
+        analyticsManager.recordCacheStats(sessionAnalytics.sessionId, cacheStats);
+      }
+    }
+
+    // End analytics session
+    let performanceMetrics = null;
+    if (enableAnalytics && sessionAnalytics) {
+      analyticsManager.endSession(sessionAnalytics.sessionId);
+      performanceMetrics = analyticsManager.getPerformanceMetrics();
+      
+      console.log(`[Analytics] Avg latency: ${performanceMetrics.avgLatency.toFixed(2)}ms`);
+      console.log(`[Analytics] P95 latency: ${performanceMetrics.p95Latency.toFixed(2)}ms`);
+      console.log(`[Analytics] Error rate: ${(performanceMetrics.errorRate * 100).toFixed(2)}%`);
+    }
+
+    console.log(`[Loop] Completed ${result.steps.length} steps`);
+    return { 
+      final: finalValue as TFinal, 
+      iterations: result.steps.length, 
+      trace: await traceManager.getRecentEvents(100),
+      cacheStats,
+      performanceMetrics,
+    };
+  } catch (error) {
+    await traceManager.emit({ iteration: 0, type: "error", content: { error: String(error) } });
     await session.finish("failed");
-    throw e;
+    if (enableAnalytics) analyticsManager.recordError();
+    throw error;
   }
+}
 
-  if (!finished) {
-    console.warn("[Loop] Max iterations reached");
-  }
+/**
+ * Get analytics manager instance
+ */
+export function getAnalyticsManager(): AnalyticsManager {
+  return analyticsManager;
+}
 
-  await traceManager.emit({
-    iteration: currentIteration,
-    type: "final",
-    content: { result: finalValue },
-  });
-  await session.finish("completed");
-
-  return {
-    final: finalValue as TFinal,
-    iterations: currentIteration,
-    trace: await traceManager.getRecentEvents(100),
-  };
+/**
+ * Get context manager instance
+ */
+export function getContextManager(): ContextManager {
+  return contextManager;
 }

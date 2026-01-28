@@ -277,3 +277,162 @@ export const MessageStore = {
     return { createdAt: row.createdAt, summary };
   },
 };
+
+// ============================================================================
+// AI SDK v6 Style Message Pruning Utilities
+// ============================================================================
+
+export interface PruneOptions {
+  /** Remove reasoning/thinking parts from messages */
+  reasoning?: "all" | "none";
+  /** Keep only recent tool calls */
+  toolCalls?: "all" | "before-last-message" | "before-last-5-messages";
+  /** Remove empty messages */
+  emptyMessages?: "remove" | "keep";
+  /** Maximum messages to keep (removes oldest) */
+  maxMessages?: number;
+  /** Always keep system message */
+  keepSystem?: boolean;
+}
+
+/**
+ * Prune messages according to AI SDK v6 patterns
+ *
+ * Usage:
+ * ```typescript
+ * const pruned = pruneMessages(messages, {
+ *   reasoning: 'all',
+ *   toolCalls: 'before-last-5-messages',
+ *   emptyMessages: 'remove',
+ *   maxMessages: 50
+ * });
+ * ```
+ */
+export function pruneMessages(
+  messages: CoreMessage[],
+  options: PruneOptions = {}
+): CoreMessage[] {
+  const result: CoreMessage[] = [];
+
+  for (const m of messages) {
+    let include = true;
+
+    // 1. Check for empty messages
+    if (options.emptyMessages === "remove") {
+      if (m.role === "system") {
+        include = typeof m.content === "string" && m.content.trim().length > 0;
+      } else if (m.role === "tool") {
+        include = Array.isArray(m.content) && m.content.length > 0;
+      } else {
+        // user or assistant
+        if (typeof m.content === "string") {
+          include = m.content.trim().length > 0;
+        } else {
+          include = Array.isArray(m.content) && m.content.length > 0;
+        }
+      }
+    }
+
+    if (!include) continue;
+
+    // 2. Remove reasoning parts
+    if (options.reasoning === "all") {
+      if (m.role === "system" && typeof m.content === "string") {
+        const cleaned = m.content
+          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+          .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
+          .replace(/Let's think step by step:[\s\S]*?(?:\n\n|$)/gi, "")
+          .trim();
+        result.push({ role: "system", content: cleaned });
+        continue;
+      }
+      
+      if ((m.role === "user" || m.role === "assistant") && typeof m.content === "string") {
+        const cleaned = m.content
+          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+          .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
+          .replace(/Let's think step by step:[\s\S]*?(?:\n\n|$)/gi, "")
+          .trim();
+        result.push({ role: m.role, content: cleaned });
+        continue;
+      }
+      
+      if (Array.isArray(m.content)) {
+        const filtered = m.content.filter((part: any) => {
+          if (part.type === "text") {
+            return !part.text?.includes("<thinking>") && 
+                   !part.text?.includes("<reasoning>");
+          }
+          return true;
+        });
+        if (filtered.length === m.content.length) {
+          result.push(m);
+        } else if (m.role === "system") {
+          result.push({ role: "system", content: filtered.join("\n") });
+        } else {
+          result.push({ role: m.role, content: filtered } as CoreMessage);
+        }
+        continue;
+      }
+    }
+
+    result.push(m);
+  }
+
+  // 3. Prune tool calls based on strategy
+  if (options.toolCalls && options.toolCalls !== "all") {
+    const cutoffIndex = options.toolCalls === "before-last-message" 
+      ? result.length - 1 
+      : Math.max(0, result.length - 5);
+    
+    const pruned: CoreMessage[] = [];
+    for (const msg of result) {
+      const idx = pruned.length;
+      if (idx < cutoffIndex && Array.isArray(msg.content)) {
+        const filtered = msg.content.filter((part: any) => 
+          part.type !== "tool-call"
+        );
+        pruned.push({ role: msg.role, content: filtered } as CoreMessage);
+      } else {
+        pruned.push(msg);
+      }
+    }
+    return pruned;
+  }
+
+  // 4. Limit total messages
+  if (options.maxMessages && result.length > options.maxMessages) {
+    const systemMsg = result.find((m) => m.role === "system");
+    const toKeep = result.slice(-options.maxMessages);
+    
+    if (options.keepSystem && systemMsg && !toKeep.includes(systemMsg)) {
+      return [systemMsg, ...toKeep.slice(1)];
+    }
+    return toKeep;
+  }
+
+  return result;
+}
+
+/**
+ * Compact messages for prepareStep hook
+ * 
+ * Keeps system message + recent context, summarizes middle section.
+ */
+export function compactMessages(
+  messages: CoreMessage[],
+  options: { keepLast?: number; maxMessages?: number } = {}
+): CoreMessage[] {
+  const { keepLast = 40, maxMessages = 120 } = options;
+
+  if (messages.length <= maxMessages) return messages;
+
+  const systemMsg = messages.find((m) => m.role === "system");
+  const recent = messages.slice(-keepLast);
+
+  if (systemMsg && !recent.includes(systemMsg)) {
+    return [systemMsg, ...recent];
+  }
+
+  return recent;
+}

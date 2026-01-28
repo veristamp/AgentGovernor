@@ -1,5 +1,9 @@
-export { AgentManager, DEFAULT_AGENT_ID } from "./manager";
-export { WorkflowAgent } from "./main/agent";
-export { OrchestratorAgent } from "./main/orchestrator";
-export { SkillCreatorAgent } from "./skill_creator/skill_creator_agent";
-export { runRecursiveAgent } from "./recursive/agent";
+/**
+ * Agents Module - Clean declarative exports
+ * 
+ * New pattern: AgentConfig + AgentSpawner
+ */
+
+export { runAgent, getAgentConfig, createSpawner, AgentManager } from "./manager";
+export { orchestratorConfig, ORCHESTRATOR_SYSTEM_PROMPT } from "./orchestrator";
+export { skillCreatorConfig, skillCreatorPhaseConfig, SKILL_CREATOR_UNIFIED_SYSTEM } from "./skill-creator";

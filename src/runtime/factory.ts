@@ -1,7 +1,8 @@
-import type { LanguageModel } from "ai";
+import { wrapLanguageModel, type LanguageModel } from "ai";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { MCPClientManager } from "../core/mcp/manager";
 import type { PolicyEngine } from "../core/policy/engine";
-import { type RuntimeIdentity, wrapGovernedModel } from "./middleware";
+import { cacheMiddleware, governanceMiddleware, type RuntimeIdentity } from "./middleware";
 import type { AgentLoopTool, AgentLoopToolContext } from "./types";
 
 export interface RuntimeContext {
@@ -16,21 +17,41 @@ export interface AgentRuntime {
 	tools: AgentLoopTool[];
 }
 
+export interface RuntimeOptions {
+	/** Enable LLM response caching */
+	enableCache?: boolean;
+	/** Cache TTL in milliseconds */
+	cacheTtlMs?: number;
+}
+
 /**
  * Agent Runtime Factory
- *
- * Assembles the "User Space" runtime by wrapping the Kernel components (MCP, Policy)
- * into safe, governed interfaces (Tools, Model).
+ * 
+ * Creates runtime with AI SDK v6 middleware pattern using wrapLanguageModel.
  */
 export async function createAgentRuntime(
 	ctx: RuntimeContext,
 	allowedToolNames: string[],
+	options: RuntimeOptions = {},
 ): Promise<AgentRuntime> {
-	// 1. Wrap the model with Governance Middleware
-	// This ensures all LLM calls are policy-checked and cached
-	const governedModel = wrapGovernedModel(ctx.model, ctx.policy, ctx.identity);
+	// Cast model to LanguageModelV3 for middleware compatibility
+	const v3Model = ctx.model as unknown as LanguageModelV3;
 
-	// 2. Create the Tools (System Calls)
+	// Apply governance middleware
+	let wrappedModel = wrapLanguageModel({
+		model: v3Model,
+		middleware: governanceMiddleware({ policy: ctx.policy, identity: ctx.identity }),
+	});
+
+	// Apply caching middleware if enabled
+	if (options.enableCache) {
+		wrappedModel = wrapLanguageModel({
+			model: wrappedModel,
+			middleware: cacheMiddleware({ ttlMs: options.cacheTtlMs }),
+		});
+	}
+
+	// 3. Create the Tools (System Calls)
 	// We need to resolve the tool definitions from the Kernel (MCP Manager)
 	const capabilities = ctx.mcp.getCapabilities();
 	const tools: AgentLoopTool[] = [];
@@ -77,7 +98,7 @@ export async function createAgentRuntime(
 	}
 
 	return {
-		model: governedModel,
+		model: wrappedModel,
 		tools,
 	};
 }

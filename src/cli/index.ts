@@ -19,7 +19,6 @@ import {
   launchUnsafe,
 } from "../../sandbox/launcher";
 import { AgentManager } from "../agents";
-import { LlmClient } from "../agents/main";
 import { MCPClientManager } from "../core/mcp";
 import { applyAbacProposalToOrgPolicy, PolicyEngine } from "../core/policy";
 import { createSocketServer, type SocketServer } from "../core/socket";
@@ -183,94 +182,68 @@ Execute Mode:
     await policy.loadRulesFromFile("policy/policy_rules.json");
     const mcp = new MCPClientManager(configPath);
     await mcp.initialize();
-    const manager = new AgentManager();
-    const agent = manager.create("skill_creator", {
-      deps: { llm: new LlmClient(llmBase, llmKey), policy },
-      options: {
-        model: llmModel,
-        toolsPath: "tools_schema.json",
-        skillsDir: "skills",
-        policyFilePath: "policy/policy_rules.json",
-        rolePermissionsPath: "policy/role_permissions.json",
-        maxRepairAttempts: 3,
+    
+    const { createOpenAI } = await import("@ai-sdk/openai");
+    const model = createOpenAI({ apiKey: llmKey })(llmModel);
+    
+    const { runAgent } = await import("../agents");
+    const result = await runAgent("skill-creator", {
+      identity: {
+        id: "admin",
+        type: "user",
+        roles: ["mcp:admin", ...skillRoles],
+        scopes: [],
+        orgId: skillOrg,
+        missionId: `miss_${Date.now()}`,
+        sessionId: `sess_${Date.now()}`,
+      },
+      mcp,
+      policy,
+      model,
+    }, {
+      goal: skillGoal,
+      constraints: [],
+      requester: {
+        id: "admin",
+        roles: ["mcp:admin", ...skillRoles],
+        orgId: skillOrg,
+        teamId: skillTeam,
       },
     });
-    const result = await agent.run(
-      {
-        goal: skillGoal,
-        constraints: [],
-        requester: {
-          id: "admin",
-          roles: ["mcp:admin", ...skillRoles],
-          orgId: skillOrg,
-          teamId: skillTeam,
-        },
-      },
-      { mcp },
-    );
+    
     await mcp.close();
-    console.log(
-      "[SkillCreator] Created",
-      result.skillRef,
-      "in",
-      result.skillDir,
-    );
-
-    if (result.abacProposal) {
-      console.log("\n[SkillCreator] ABAC proposal (requires human approval):");
-      console.log(JSON.stringify(result.abacProposal, null, 2));
-
-      const rl = createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      const answer = await rl.question("Approve ABAC proposal? [y/N]: ");
-      rl.close();
-
-      if (answer.trim().toLowerCase() === "y") {
-        const applied = await applyAbacProposalToOrgPolicy(
-          result.abacProposal,
-          skillOrg,
-        );
-        if (applied.applied) {
-          console.log(
-            `[SkillCreator] ABAC proposal applied to ${applied.path}`,
-          );
-        } else {
-          console.log(
-            `[SkillCreator] ABAC proposal already present in ${applied.path}`,
-          );
-        }
-      } else {
-        console.log("[SkillCreator] ABAC proposal not applied.");
-      }
-    }
-
+    console.log("[SkillCreator] Result:", result.final);
     process.exit(0);
   }
 
   if (workflowGoal) {
     const policy = new PolicyEngine();
     await policy.loadRulesFromFile("policy/policy_rules.json");
-    const manager = new AgentManager();
-    const agent = manager.create("workflow", {
-      llm: new LlmClient(llmBase, llmKey),
-      policy,
-      model: llmModel,
-      temperature: 0.2,
-      maxTokens: 2200,
-      maxRepairAttempts: 3,
-    });
-    const result = await agent.run({
-      goal: workflowGoal,
+    const mcp = new MCPClientManager(configPath);
+    await mcp.initialize();
+    
+    const { createOpenAI } = await import("@ai-sdk/openai");
+    const model = createOpenAI({ apiKey: llmKey })(llmModel);
+    
+    const { runAgent } = await import("../agents");
+    const result = await runAgent("orchestrator", {
       identity: {
+        id: "admin",
+        type: "user",
         roles: ["mcp:admin", ...skillRoles],
         scopes: [],
         orgId: skillOrg,
+        missionId: `miss_${Date.now()}`,
+        sessionId: `sess_${Date.now()}`,
       },
-    });
-    console.error("[WorkflowAgent] Generated workflow:");
-    console.log(result.code);
+      mcp,
+      policy,
+      model,
+    }, { goal: workflowGoal });
+    
+    await mcp.close();
+    console.error("[Orchestrator] Generated workflow:");
+    console.log(result.final);
     process.exit(0);
   }
 
