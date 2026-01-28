@@ -68,6 +68,19 @@ export async function validateToken(
 }
 
 /**
+ * Safely parse JSON from a response, handling empty or invalid bodies.
+ */
+export async function safeJson<T>(response: Response): Promise<T | null> {
+	try {
+		const text = await response.text();
+		if (!text || text.trim() === "") return null;
+		return JSON.parse(text) as T;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Extract Bearer token from Authorization header.
  */
 export function extractBearerToken(authHeader?: string): string | null {

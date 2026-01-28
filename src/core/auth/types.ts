@@ -131,7 +131,7 @@ export interface JWTClaims {
 	jti?: string; // JWT ID
 	azp?: string; // Authorized party (client_id)
 	client_id?: string; // Alternative client_id
-	scope?: string; // Space-separated scopes
+	scope?: string | string[]; // Space-separated scopes OR array of strings
 	scp?: string[]; // Array of scopes (alternative format)
 	org_id?: string; // Organization ID
 	client_type?: string; // Client type (machine, user, etc.)

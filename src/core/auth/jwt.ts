@@ -8,6 +8,21 @@
 import type { JWTClaims } from "./types";
 
 /**
+ * Base64URL decode helper.
+ */
+function base64UrlDecode(str: string): string {
+	// Pad with '=' to multiple of 4
+	const padding = 4 - (str.length % 4);
+	const padded = padding !== 4 ? str + "=".repeat(padding) : str;
+
+	// Replace URL-safe chars with standard Base64 chars
+	const base64 = padded.replace(/-/g, "+").replace(/_/g, "/");
+
+	// Decode
+	return atob(base64);
+}
+
+/**
  * Decode a JWT token without verification.
  * Use this only for extracting claims - always verify signatures in production.
  */
@@ -18,17 +33,7 @@ export function decodeJWT(token: string): JWTClaims | null {
 			return null;
 		}
 
-		// Base64URL decode the payload (second part)
-		const payloadB64 = parts[1]!;
-		const padding = 4 - (payloadB64.length % 4);
-		const paddedB64 =
-			padding !== 4 ? payloadB64 + "=".repeat(padding) : payloadB64;
-
-		// Convert base64url to base64
-		const base64 = paddedB64.replace(/-/g, "+").replace(/_/g, "/");
-
-		// Decode
-		const payloadJson = atob(base64);
+		const payloadJson = base64UrlDecode(parts[1]!);
 		return JSON.parse(payloadJson) as JWTClaims;
 	} catch {
 		return null;
@@ -54,13 +59,7 @@ export function decodeJWTHeader(
 			return null;
 		}
 
-		const headerB64 = parts[0]!;
-		const padding = 4 - (headerB64.length % 4);
-		const paddedB64 =
-			padding !== 4 ? headerB64 + "=".repeat(padding) : headerB64;
-		const base64 = paddedB64.replace(/-/g, "+").replace(/_/g, "/");
-		const headerJson = atob(base64);
-
+		const headerJson = base64UrlDecode(parts[0]!);
 		return JSON.parse(headerJson);
 	} catch {
 		return null;
@@ -112,11 +111,16 @@ export function extractClientId(claims: JWTClaims): string | undefined {
  */
 export function extractScopes(claims: JWTClaims): string[] {
 	const scope = claims.scope;
-	if (!scope) {
-		return [];
-	}
+
+	// Standard OAuth 2.0: space-separated string
 	if (typeof scope === "string") {
 		return scope.split(" ").filter(Boolean);
 	}
+
+	// Non-standard but possible: array of strings
+	if (Array.isArray(scope)) {
+		return scope.filter((s) => typeof s === "string");
+	}
+
 	return [];
 }

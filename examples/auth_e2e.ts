@@ -124,14 +124,18 @@ async function main(): Promise<number> {
 	const claims = decodeJWT(token.accessToken) as {
 		aud?: string;
 		azp?: string;
-		scope?: string;
+		scope?: string | string[];
 		exp?: number;
 		roles?: string[];
 	};
 	console.log("✅ JWT acquired");
 	console.log(`   • aud: ${claims?.aud}`);
 	console.log(`   • azp: ${claims?.azp}`);
-	console.log(`   • scope: ${claims?.scope}`);
+	// Handle scope as either string or array
+	const scopeDisplay = Array.isArray(claims?.scope)
+		? claims.scope.join(" ")
+		: claims?.scope;
+	console.log(`   • scope: ${scopeDisplay}`);
 	console.log(`   • roles: ${claims?.roles?.join(", ") ?? "none"}`);
 	console.log(`   • exp: ${new Date((claims?.exp ?? 0) * 1000).toISOString()}`);
 

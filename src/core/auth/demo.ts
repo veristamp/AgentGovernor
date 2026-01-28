@@ -173,6 +173,7 @@ async function main(): Promise<number> {
 	console.log(
 		`   • Allowed Roles: ${credentials.allowedRoles?.join(", ") ?? "none"}`,
 	);
+	console.log(`   • Public Client: ${credentials.isPublic ? "Yes" : "No"}`);
 
 	// =========================================================================
 	// PHASE 5: TOKEN ACQUISITION
@@ -376,6 +377,66 @@ async function main(): Promise<number> {
 	}
 
 	// =========================================================================
+	// PHASE 11: SECRET ROTATION
+	// =========================================================================
+	printHeader("PHASE 11: SECRET ROTATION");
+
+	// Re-enable client to allow secret rotation (since it was revoked in Phase 10)
+	console.log(
+		`\n🔓 Re-enabling client ${credentials.clientId.slice(0, 16)}...`,
+	);
+	await admin.enableClient(credentials.clientId);
+
+	if (credentials.clientSecret) {
+		console.log("\n🔄 Rotating client secret...");
+		const oldSecret = credentials.clientSecret;
+
+		// 11A: Rotate
+		const rotationResult = await agent.rotateSecret();
+		console.log("✅ Secret rotated successfully!");
+		console.log(
+			`   • New Secret: ${rotationResult.clientSecret.slice(0, 5)}...`,
+		);
+		console.log(`   • Rotated At: ${rotationResult.rotatedAt}`);
+
+		// 11B: Verify Old Secret Fails
+		printSubheader("11B: Verifying Old Secret Fails");
+		const oldAgent = new MCPAgentClient({
+			authServer: AUTH_SERVER,
+			clientId: credentials.clientId,
+			clientSecret: oldSecret,
+		});
+
+		console.log("🚫 Attempting to get token with OLD secret...");
+		try {
+			await oldAgent.getToken(["read:data"]);
+			console.log("❌ Unexpected success with old secret!");
+			return 1;
+		} catch (error) {
+			console.log("✅ Old secret correctly rejected");
+			// Check for specific error message if possible, or just accept the failure
+			if (error instanceof Error) {
+				console.log(`   • Error: ${error.message}`);
+			}
+		}
+
+		// 11C: Verify New Secret Works
+		printSubheader("11C: Verifying New Secret Works");
+		console.log("🔑 Requesting token with NEW secret...");
+		try {
+			// agent already has the new secret updated internally by rotateSecret()
+			const newToken = await agent.getToken(["read:data"], undefined, true);
+			console.log("✅ Token acquired with new secret!");
+			console.log(`   • Token: ${newToken.accessToken.slice(0, 40)}...`);
+		} catch (error) {
+			console.log(`❌ Failed with new secret: ${error}`);
+			return 1;
+		}
+	} else {
+		console.log("⚠️ Skipping secret rotation (Public Client / No Secret)");
+	}
+
+	// =========================================================================
 	// SUMMARY
 	// =========================================================================
 	printHeader("DEMO COMPLETE - ALL SDK FEATURES VERIFIED");
@@ -393,6 +454,7 @@ async function main(): Promise<number> {
 ✅ Audience Validation (JWT aud claim)
 ✅ Kill Switch / Client Revocation
 ✅ Role-based Access Control (RBAC)
+✅ Secret Rotation
 `);
 
 	return 0;

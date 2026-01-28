@@ -193,12 +193,12 @@ export class MCPAdminClient {
 			data?: InviteResult;
 			token?: string;
 		}>("POST", "/api/admin/mcp/invites", {
-			orgId: params.orgId,
+			org_id: params.orgId,
 			budget: params.budget ?? 1,
-			ttlSeconds: params.ttlSeconds ?? 600,
-			allowedScopes: params.allowedScopes ?? [],
-			allowedAudiences: params.allowedAudiences ?? [],
-			allowedRoles: params.allowedRoles ?? [],
+			ttl_seconds: params.ttlSeconds ?? 600,
+			allowed_scopes: params.allowedScopes ?? [],
+			allowed_audiences: params.allowedAudiences ?? [],
+			allowed_roles: params.allowedRoles ?? [],
 		});
 
 		if (status !== 200 && status !== 201) {

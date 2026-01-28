@@ -354,6 +354,60 @@ export class MCPAgentClient {
 	}
 
 	/**
+	 * Rotate the client secret.
+	 * This immediately invalidates the old secret.
+	 */
+	async rotateSecret(): Promise<{ clientSecret: string; rotatedAt: string }> {
+		if (!this.clientId || !this.clientSecret) {
+			throw new MCPAuthError(
+				"Client credentials not set. Call register() first.",
+			);
+		}
+
+		const response = await fetch(
+			`${this.authServer}/api/auth/oauth2/client/rotate-secret`,
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Origin: this.authServer,
+					...getSdkHeaders(),
+				},
+				body: JSON.stringify({
+					client_id: this.clientId,
+					client_secret: this.clientSecret,
+				}),
+				signal: AbortSignal.timeout(this.timeout),
+			},
+		);
+
+		if (response.status === 200) {
+			const data = (await response.json()) as {
+				client_secret: string;
+				rotated_at: string;
+			};
+			this.clientSecret = data.client_secret;
+			if (this.credentials) {
+				this.credentials.clientSecret = data.client_secret;
+			}
+			return {
+				clientSecret: data.client_secret,
+				rotatedAt: data.rotated_at,
+			};
+		}
+
+		const errorData = (await response.json().catch(() => ({}))) as Record<
+			string,
+			string
+		>;
+		throw new MCPAuthError(
+			errorData.error_description ??
+				`Secret rotation failed: ${response.status}`,
+			errorData.error,
+		);
+	}
+
+	/**
 	 * Get the current credentials (after registration).
 	 */
 	getCredentials(): MCPCredentials | undefined {

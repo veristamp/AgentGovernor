@@ -40,3 +40,4 @@ registry.sqlite-shm
 registry.sqlite-wal
 drizzle
 bun.lock
+docs

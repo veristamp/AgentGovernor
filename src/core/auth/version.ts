@@ -2,7 +2,7 @@
  * MCP Identity SDK - Versioning
  */
 
-export const SDK_VERSION = "0.0.1";
+export const SDK_VERSION = "0.0.0";
 export const SDK_LANGUAGE = "typescript";
 export const SDK_VERSION_HEADER = "x-mcp-sdk-version";
 export const SDK_LANGUAGE_HEADER = "x-mcp-sdk-language";
