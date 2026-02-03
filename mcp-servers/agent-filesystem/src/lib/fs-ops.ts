@@ -1,10 +1,15 @@
-import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { minimatch } from "minimatch";
 import { validatePath } from "../path-validation.js";
 import { formatSize } from "./format.js";
 import { normalizeLineEndings } from "./text.js";
+
+function randomHex(bytes: number): string {
+	const buf = new Uint8Array(bytes);
+	crypto.getRandomValues(buf);
+	return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 export async function readTextFile(
 	requestedPath: string,
@@ -104,7 +109,7 @@ export async function writeFile(
 		return { bytes: bytes.length, path: requestedPath };
 	}
 
-	const tmpPath = `${validPath}.${randomBytes(16).toString("hex")}.tmp`;
+	const tmpPath = `${validPath}.${randomHex(16)}.tmp`;
 	try {
 		await Bun.write(tmpPath, bytes);
 		await fs.rename(tmpPath, validPath);

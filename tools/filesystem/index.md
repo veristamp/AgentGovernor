@@ -1,6 +1,6 @@
 # Filesystem Tools
 
-This server provides 16 tools.
+This server provides 17 tools.
 
 ## Available Tools
 
@@ -19,4 +19,5 @@ This server provides 16 tools.
 - [`edit-file`](./edit-file.md) - Structured replace edits for text files. Returns a unified diff. Use dry_run=true first.
 - [`patch-span`](./patch-span.md) - Replace a 0-based character span [start:end] with new content. Optional sha256 guard on selected sli
 - [`patch-lines`](./patch-lines.md) - Replace a 1-based inclusive line range with new content. Optional sha256 guard on selected slice. Us
-- [`stitch-file`](./stitch-file.md) - Assemble a new file from character slices of existing files. Each graft copies [start:end] from a so
+- [`stitch-file`](./stitch-file.md) - ADVANCED: Assemble a new file from character slices of existing files. Each graft copies [start:end]
+- [`grep-search`](./grep-search.md) - Search files for a regex pattern. Returns matching lines and file paths. Only works within allowed d

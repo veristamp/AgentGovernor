@@ -23,6 +23,7 @@ import {
 	patchSpan,
 	stitchFile,
 } from "./lib/patch-ops.js";
+import { grepSearch, formatGrepResults } from "./lib/grep-ops.js";
 import { getValidRootDirectories } from "./roots-utils.js";
 import {
 	getAllowedDirectories,
@@ -489,9 +490,9 @@ export function createAgentFilesystemServer() {
 	server.registerTool(
 		"stitch_file",
 		{
-			title: "Stitch File",
+			title: "Stitch File (Advanced)",
 			description:
-				"Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Use dry_run=true first.",
+				"ADVANCED: Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Requires precise byte offset calculation. Use dry_run=true first. Prefer patch_lines for most operations.",
 			inputSchema: {
 				grafts: z
 					.array(
@@ -520,6 +521,35 @@ export function createAgentFilesystemServer() {
 				dry_run: args.dry_run,
 			});
 			const text = JSON.stringify({ success: true, ...res }, null, 2);
+			return {
+				content: [{ type: "text", text }],
+				structuredContent: { content: text },
+			};
+		},
+	);
+
+	server.registerTool(
+		"grep_search",
+		{
+			title: "Grep Search",
+			description:
+				"Search files for a regex pattern. Returns matching lines and file paths. Only works within allowed directories.",
+			inputSchema: {
+				path: z.string(),
+				pattern: z.string(),
+				excludePatterns: z.array(z.string()).default([]),
+				limit: z.number().int().positive().default(5000),
+			},
+			annotations: { readOnlyHint: true },
+		},
+		async (args) => {
+			const matches = await grepSearch({
+				path: args.path,
+				pattern: args.pattern,
+				excludePatterns: args.excludePatterns,
+				maxMatches: args.limit,
+			});
+			const text = formatGrepResults(matches);
 			return {
 				content: [{ type: "text", text }],
 				structuredContent: { content: text },

@@ -3,7 +3,7 @@
   "serverPrefix": "filesystem",
   "name": "stitch-file",
   "originalName": "stitch_file",
-  "description": "Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Use dry_run=true first.",
+  "description": "ADVANCED: Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Requires precise byte offset calculation. Use dry_run=true first. Prefer patch_lines for most operations.",
   "schema": {
     "type": "object",
     "properties": {

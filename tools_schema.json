@@ -453,7 +453,7 @@
     "serverPrefix": "filesystem",
     "name": "stitch-file",
     "originalName": "stitch_file",
-    "description": "Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Use dry_run=true first.",
+    "description": "ADVANCED: Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Requires precise byte offset calculation. Use dry_run=true first. Prefer patch_lines for most operations.",
     "schema": {
       "type": "object",
       "properties": {
@@ -504,6 +504,42 @@
       "required": [
         "grafts",
         "output_path"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "qualifiedName": "filesystem.grep-search",
+    "serverPrefix": "filesystem",
+    "name": "grep-search",
+    "originalName": "grep_search",
+    "description": "Search files for a regex pattern. Returns matching lines and file paths. Only works within allowed directories.",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "limit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 5000
+        }
+      },
+      "required": [
+        "path",
+        "pattern"
       ],
       "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
@@ -1551,7 +1587,6 @@
         "query",
         "libraryName"
       ],
-      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -1577,7 +1612,6 @@
         "libraryId",
         "query"
       ],
-      "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   }

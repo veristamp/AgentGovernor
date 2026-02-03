@@ -1,6 +1,6 @@
 # filesystem.stitch-file
 
-> Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Use dry_run=true first.
+> ADVANCED: Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Requires precise byte offset calculation. Use dry_run=true first. Prefer patch_lines for most operations.
 
 ## Signature
 
@@ -10,7 +10,7 @@ await stitch-file(grafts: list, output_path: str, overwrite: bool = false, dry_r
 
 ## Description
 
-Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Use dry_run=true first.
+ADVANCED: Assemble a new file from character slices of existing files. Each graft copies [start:end] from a source. Requires precise byte offset calculation. Use dry_run=true first. Prefer patch_lines for most operations.
 
 ## Parameters
 

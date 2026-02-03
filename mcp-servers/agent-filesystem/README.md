@@ -40,11 +40,23 @@ Filesystem:
 - get_file_info
 - list_allowed_directories
 
+Search:
+- grep_search (content search using ripgrep if available, with Node.js fallback)
+
 Patching / composition:
 - edit_file (structured replace, dry_run default true)
 - patch_span (0-based offsets)
 - patch_lines (1-based inclusive line range)
-- stitch_file (assemble file from slices)
+- stitch_file (ADVANCED: assemble file from slices, requires precise byte offsets)
+
+## Validation & Analysis
+
+For comprehensive code validation (syntax checking, duplicate detection, impact analysis), use the **kb/judgment** module instead. The judgment system provides:
+- Syntax validation (tree-sitter AST parsing)
+- Semantic duplicate detection (vector search)
+- Diff discipline enforcement
+- Impact analysis (blast radius)
+- Test verification
 
 ## Development
 
