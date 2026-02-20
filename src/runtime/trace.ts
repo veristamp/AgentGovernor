@@ -65,7 +65,7 @@ export class TraceManager {
 				tokenCount: event.tokenCount ? String(event.tokenCount) : undefined,
 				createdAt,
 			});
-		} catch (e) {
+		} catch {
 			// Swallow DB error and rely on memory for this session
 		}
 
@@ -101,7 +101,7 @@ export class TraceManager {
 					createdAt: r.createdAt,
 				}));
 			}
-		} catch (e) {
+		} catch {
 			// DB failed or empty
 		}
 

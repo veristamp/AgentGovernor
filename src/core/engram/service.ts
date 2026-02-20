@@ -141,7 +141,7 @@ export class EngramServiceImpl implements EngramService {
 				meta: nodes.meta,
 			})
 			.from(nodes)
-			.where(sql`${nodes.content} ILIKE ${"%" + query + "%"}`)
+			.where(sql`${nodes.content} ILIKE ${`%${query}%`}`)
 			.limit(limit);
 
 		const engramNodes: EngramNode[] = results.map((n) => ({
@@ -168,7 +168,8 @@ export class EngramServiceImpl implements EngramService {
 			.limit(1);
 
 		if (result.length === 0) return null;
-		const n = result[0]!;
+		const n = result[0];
+		if (!n) return null;
 		const meta = n.meta as Record<string, unknown> | null;
 
 		// Fetch dependencies (outgoing edges)
@@ -229,7 +230,9 @@ export class EngramServiceImpl implements EngramService {
 			.limit(1);
 
 		if (startNode.length === 0) return { nodes: [] };
-		const startId = startNode[0]!.id;
+		const firstNode = startNode[0];
+		if (!firstNode) return { nodes: [] };
+		const startId = firstNode.id;
 
 		// Get graph context using recursive CTE
 		// This mirrors the Python get_graph_context RPC
@@ -582,15 +585,16 @@ export class EngramServiceImpl implements EngramService {
             SELECT 
                 n.id, n.content, n.type, n.section_path, n.doc_url, n.meta
             FROM gcm_registry.nodes n
-            WHERE n.doc_url LIKE ${"%" + filePattern + "%"}
+            WHERE n.doc_url LIKE ${`%${filePattern}%`}
             AND n.type = 'CODE'
-            AND n.meta->>'symbols_defined' LIKE ${"%" + functionName + "%"}
+            AND n.meta->>'symbols_defined' LIKE ${`%${functionName}%`}
             LIMIT 1
         `);
 
 		if (result.length === 0) return null;
 
-		const row = result[0]!;
+		const row = result[0];
+		if (!row) return null;
 		const meta = row.meta || {};
 
 		return {

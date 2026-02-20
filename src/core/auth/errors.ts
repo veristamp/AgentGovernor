@@ -38,6 +38,25 @@ export class MCPAuthError extends MCPError {
 }
 
 /**
+ * MCP consent or scope policy failed.
+ */
+export class MCPConsentError extends MCPAuthError {
+	consentUrl?: string;
+	invalidScopes?: string[];
+
+	constructor(
+		message: string,
+		code?: string,
+		options?: { consentUrl?: string; invalidScopes?: string[] },
+	) {
+		super(message, code);
+		this.name = "MCPConsentError";
+		this.consentUrl = options?.consentUrl;
+		this.invalidScopes = options?.invalidScopes;
+	}
+}
+
+/**
  * Token validation failed.
  */
 export class MCPValidationError extends MCPError {

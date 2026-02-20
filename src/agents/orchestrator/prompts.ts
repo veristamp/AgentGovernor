@@ -18,9 +18,12 @@ Return JSON: { code?: string, selectedSkills?: string[], plan?: string, result?:
 
 export const ORCHESTRATOR_REPAIR_PROMPT = `You are a Python code auto-correcting bot. Fix broken Python code and return a single corrected Python code block only.`;
 
-export function buildOrchestratorPrompt(goal: string): { system: string; user: string } {
-  return {
-    system: ORCHESTRATOR_SYSTEM_PROMPT,
-    user: `GOAL:\n${goal}\n\nFind or create the best solution.`,
-  };
+export function buildOrchestratorPrompt(goal: string): {
+	system: string;
+	user: string;
+} {
+	return {
+		system: ORCHESTRATOR_SYSTEM_PROMPT,
+		user: `GOAL:\n${goal}\n\nFind or create the best solution.`,
+	};
 }

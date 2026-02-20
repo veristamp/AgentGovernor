@@ -229,11 +229,10 @@ async function atomicWriteText(filePath: string, content: string) {
 	const dir = path.dirname(filePath);
 	const randomBytes = new Uint8Array(8);
 	crypto.getRandomValues(randomBytes);
-	const hexRandom = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-	const tmp = path.join(
-		dir,
-		`.tmp.${path.basename(filePath)}.${hexRandom}`,
-	);
+	const hexRandom = Array.from(randomBytes)
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
+	const tmp = path.join(dir, `.tmp.${path.basename(filePath)}.${hexRandom}`);
 	await fs.mkdir(dir, { recursive: true });
 	try {
 		await Bun.write(tmp, content);

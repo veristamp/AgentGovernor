@@ -36,6 +36,10 @@
 
 import { createHash, randomBytes } from "node:crypto";
 
+function getErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
 // =============================================================================
 // Auto Setup (Admin Bootstrap)
 // =============================================================================
@@ -123,8 +127,8 @@ async function autoSetup(): Promise<{
 			clientSecret: creds.clientSecret,
 			authServer: creds.authServer,
 		};
-	} catch (e: any) {
-		console.warn(`   ⚠️  DB Setup failed: ${e.message}`);
+	} catch (e: unknown) {
+		console.warn(`   ⚠️  DB Setup failed: ${getErrorMessage(e)}`);
 		console.warn(`   Falling back to API setup...`);
 	}
 
@@ -165,15 +169,15 @@ if (!CLIENT_ID) {
 		AUTH_SERVER = setup.authServer;
 
 		// Export for user visibility
-		console.log("\n" + "=".repeat(70));
+		console.log(`\n${"=".repeat(70)}`);
 		console.log("  ⚠️  AUTO-GENERATED CREDENTIALS (Valid for this session)");
 		console.log("=".repeat(70));
 		console.log(`  export OAUTH_CLIENT_ID="${CLIENT_ID}"`);
 		console.log(`  export OAUTH_CLIENT_SECRET="${CLIENT_SECRET}"`);
 		console.log(`  export OAUTH_AUTH_SERVER="${AUTH_SERVER}"`);
 		console.log("=".repeat(70));
-	} catch (e: any) {
-		console.error("\n❌ Auto-setup failed:", e.message);
+	} catch (e: unknown) {
+		console.error("\n❌ Auto-setup failed:", getErrorMessage(e));
 		console.error(
 			"Please set OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET manually.",
 		);
@@ -204,7 +208,7 @@ interface OAuthUser {
 	org_id?: string;
 	org_slug?: string;
 	org_role?: string;
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 interface OAuthDiscovery {
@@ -237,7 +241,7 @@ class OAuthClient {
 				`${this.authServer}/.well-known/openid-configuration`,
 			);
 			if (!res.ok) throw new Error("Discovery failed");
-			const data = (await res.json()) as any;
+			const data = (await res.json()) as Partial<OAuthDiscovery>;
 
 			this.discovery = {
 				issuer: data.issuer || this.authServer,
@@ -316,7 +320,7 @@ class OAuthClient {
 		// Use Basic Auth for client secret
 		if (this.clientId && this.clientSecret) {
 			const credentials = btoa(`${this.clientId}:${this.clientSecret}`);
-			headers["Authorization"] = `Basic ${credentials}`;
+			headers.Authorization = `Basic ${credentials}`;
 		} else {
 			body.client_id = this.clientId;
 		}
@@ -332,7 +336,7 @@ class OAuthClient {
 			throw new Error(`Token exchange failed: ${res.status} ${text}`);
 		}
 
-		const data = (await res.json()) as any;
+		const data = (await res.json()) as OAuthTokens;
 		return {
 			...data,
 			expires_at: Date.now() + data.expires_in * 1000,
@@ -354,7 +358,7 @@ class OAuthClient {
 		// Use Basic Auth for client secret
 		if (this.clientId && this.clientSecret) {
 			const credentials = btoa(`${this.clientId}:${this.clientSecret}`);
-			headers["Authorization"] = `Basic ${credentials}`;
+			headers.Authorization = `Basic ${credentials}`;
 		} else {
 			body.client_id = this.clientId;
 		}
@@ -370,7 +374,7 @@ class OAuthClient {
 			throw new Error(`Token refresh failed: ${res.status} ${text}`);
 		}
 
-		const data = (await res.json()) as any;
+		const data = (await res.json()) as OAuthTokens;
 		return {
 			...data,
 			expires_at: Date.now() + data.expires_in * 1000,
@@ -430,16 +434,23 @@ class OAuthClient {
 // Session Management (Simple In-Memory)
 // =============================================================================
 
-const sessions = new Map<string, any>();
+type SessionData = {
+	oauth_state?: string;
+	code_verifier?: string;
+	tokens?: OAuthTokens;
+	[key: string]: unknown;
+};
 
-function getSession(req: Request): any {
+const sessions = new Map<string, SessionData>();
+
+function getSession(req: Request): SessionData {
 	const cookieHeader = req.headers.get("Cookie");
 	if (!cookieHeader) return {};
 
 	const cookies = Object.fromEntries(
 		cookieHeader.split("; ").map((c) => c.split("=")),
-	);
-	const sessionId = cookies["oauth_demo_session"];
+	) as Record<string, string>;
+	const sessionId = cookies.oauth_demo_session;
 
 	if (sessionId && sessions.has(sessionId)) {
 		return sessions.get(sessionId);
@@ -447,7 +458,10 @@ function getSession(req: Request): any {
 	return {};
 }
 
-function saveSession(sessionId: string | null, data: any): string {
+function saveSession(
+	sessionId: string | null,
+	data: Partial<SessionData>,
+): string {
 	const id = sessionId || randomBytes(16).toString("hex");
 	const existing = sessions.get(id) || {};
 	sessions.set(id, { ...existing, ...data });
@@ -459,8 +473,8 @@ function clearSession(req: Request) {
 	if (!cookieHeader) return;
 	const cookies = Object.fromEntries(
 		cookieHeader.split("; ").map((c) => c.split("=")),
-	);
-	const sessionId = cookies["oauth_demo_session"];
+	) as Record<string, string>;
+	const sessionId = cookies.oauth_demo_session;
 	if (sessionId) sessions.delete(sessionId);
 }
 
@@ -628,7 +642,7 @@ const oauth = new OAuthClient(
 	SCOPES,
 );
 
-console.log("\n" + "=".repeat(70));
+console.log(`\n${"=".repeat(70)}`);
 console.log("  🚀 OAuth Demo App Running (TypeScript)");
 console.log("=".repeat(70));
 console.log(`  Auth Server: ${AUTH_SERVER}`);
@@ -658,7 +672,7 @@ Bun.serve({
 			if (session.tokens) {
 				try {
 					user = await oauth.getUserInfo(session.tokens.access_token);
-				} catch (e) {
+				} catch {
 					// Token likely expired
 				}
 			}
@@ -806,10 +820,10 @@ Bun.serve({
 						"Set-Cookie": `oauth_demo_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax`,
 					},
 				});
-			} catch (e: any) {
+			} catch (e: unknown) {
 				const content = `
                 <p style="color: #dc3545;">❌ Token exchange failed</p>
-                <pre>${e.message}</pre>
+                <pre>${getErrorMessage(e)}</pre>
                 <p><a href="/" class="btn">Try Again</a></p>
                 `;
 				return renderPage("Token Error", content);
@@ -844,7 +858,7 @@ Bun.serve({
                 <h3 style="margin-top: 2rem;">🎫 Token Info</h3>
                 <div class="info-grid">
                     <dt>Access Token</dt><dd><code style="font-size: 0.7rem;">${tokens.access_token.substring(0, 50)}...</code></dd>
-                    <dt>Refresh Token</dt><dd><code style="font-size: 0.7rem;">${tokens.refresh_token ? tokens.refresh_token.substring(0, 50) + "..." : "None"}</code></dd>
+                    <dt>Refresh Token</dt><dd><code style="font-size: 0.7rem;">${tokens.refresh_token ? `${tokens.refresh_token.substring(0, 50)}...` : "None"}</code></dd>
                     <dt>ID Token</dt><dd>${tokens.id_token ? "Present ✅" : "None"}</dd>
                     <dt>Expires In</dt><dd>${Math.floor(((tokens.expires_at || 0) - Date.now()) / 1000)}s</dd>
                 </div>
@@ -854,7 +868,7 @@ Bun.serve({
                 `;
 
 				return renderPage("My Profile", content, user);
-			} catch (e) {
+			} catch {
 				if (tokens.refresh_token) {
 					return new Response(null, {
 						status: 302,
@@ -896,9 +910,9 @@ Bun.serve({
                 <p><a href="/me" class="btn">View Profile</a></p>
                 `;
 				return renderPage("Token Refreshed", content);
-			} catch (e: any) {
+			} catch (e: unknown) {
 				const content = `
-                <p style="color: #dc3545;">❌ Token refresh failed: ${e.message}</p>
+                <p style="color: #dc3545;">❌ Token refresh failed: ${getErrorMessage(e)}</p>
                 <p><a href="/login" class="btn">Login Again</a></p>
                 `;
 				return renderPage("Refresh Error", content);
@@ -921,12 +935,6 @@ Bun.serve({
 				idToken,
 				`http://localhost:${PORT}`,
 			);
-
-			const content = `
-            <p class="success">✅ You have been logged out.</p>
-            <p><a href="/" class="btn">Return Home</a></p>
-            <p><small>Note: You may still be logged into the Auth Server. <a href="${logoutUrl}">Click here to sign out globally</a>.</small></p>
-            `;
 
 			// Clear the cookie in browser
 			return new Response(null, {

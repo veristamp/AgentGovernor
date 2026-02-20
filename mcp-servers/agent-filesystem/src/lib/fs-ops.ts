@@ -8,7 +8,9 @@ import { normalizeLineEndings } from "./text.js";
 function randomHex(bytes: number): string {
 	const buf = new Uint8Array(bytes);
 	crypto.getRandomValues(buf);
-	return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
+	return Array.from(buf)
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
 }
 
 export async function readTextFile(

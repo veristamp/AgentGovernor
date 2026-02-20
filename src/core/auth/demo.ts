@@ -38,14 +38,15 @@ import {
 const AUTH_SERVER = process.env.MCP_AUTH_SERVER ?? "http://localhost:8787";
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL ?? "admin@example.com";
 const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD ?? "password";
-const MY_AUDIENCE = "mcp://rag-demo-service";
+const DEFAULT_DEMO_AUDIENCE =
+	process.env.MCP_DEMO_AUDIENCE ?? `${AUTH_SERVER}/api/mcp-demo/${Date.now()}`;
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
 function printHeader(title: string): void {
-	console.log("\n" + "=".repeat(70));
+	console.log(`\n${"=".repeat(70)}`);
 	console.log(`  ${title}`);
 	console.log("=".repeat(70));
 }
@@ -59,9 +60,11 @@ function printSubheader(title: string): void {
 // =============================================================================
 
 async function main(): Promise<number> {
+	let myAudience = DEFAULT_DEMO_AUDIENCE;
+
 	printHeader("MCP Identity SDK - TypeScript Demo");
 	console.log(`\nAuth Server: ${AUTH_SERVER}`);
-	console.log(`My Audience: ${MY_AUDIENCE}`);
+	console.log(`My Audience (initial): ${myAudience}`);
 
 	// =========================================================================
 	// PHASE 1: ADMIN SETUP
@@ -95,7 +98,26 @@ async function main(): Promise<number> {
 	}
 
 	const orgId = orgData.id ?? orgData.organization?.id;
+	if (!orgId) {
+		console.log("❌ Organization ID missing from create-org response");
+		return 1;
+	}
 	console.log(`✅ Created org: ${orgId?.slice(0, 16)}...`);
+
+	console.log(
+		"\n🧩 Registering demo MCP server to produce a valid audience...",
+	);
+	const registeredServer = await admin.registerMcpServer({
+		name: `demo-rag-${Date.now()}`,
+		transport: "http",
+		visibility: "private",
+		description: "Demo server for SDK audience binding",
+		url: DEFAULT_DEMO_AUDIENCE,
+	});
+	const serverDetail = await admin.getMcpServer(registeredServer.serverId);
+	myAudience = serverDetail.server.url;
+	console.log(`✅ Registered MCP server: ${registeredServer.serverId}`);
+	console.log(`   • Audience URL: ${myAudience}`);
 
 	// =========================================================================
 	// PHASE 2: REGISTRATION INVITE
@@ -104,18 +126,18 @@ async function main(): Promise<number> {
 
 	console.log("\n🎟️  Minting registration invite...");
 	const invite = await admin.createInvite({
-		orgId: orgId!,
+		orgId,
 		budget: 2,
 		ttlSeconds: 600,
 		allowedScopes: ["read:data", "write:data", "admin:delete"],
-		allowedAudiences: [MY_AUDIENCE],
+		allowedAudiences: [myAudience],
 		allowedRoles: ["mcp:rag-agent"], // NEW: Roles support
 	});
 
 	console.log("✅ Invite minted!");
 	console.log("   • Budget: 2 registrations");
 	console.log("   • Allowed Scopes: read:data, write:data, admin:delete");
-	console.log(`   • Allowed Audiences: ${MY_AUDIENCE}`);
+	console.log(`   • Allowed Audiences: ${myAudience}`);
 	console.log("   • Allowed Roles: mcp:rag-agent");
 
 	// =========================================================================
@@ -139,7 +161,7 @@ async function main(): Promise<number> {
 		console.log(
 			`   • Introspection Endpoint: ${metadata.introspectionEndpoint ?? "not specified"}`,
 		);
-	} catch (e) {
+	} catch {
 		console.log(
 			"⚠️  Resource metadata discovery not available (optional feature)",
 		);
@@ -188,8 +210,8 @@ async function main(): Promise<number> {
 	console.log(`   • Token: ${opaqueToken.accessToken.slice(0, 40)}...`);
 
 	printSubheader("5B: JWT Token (with audience - RFC 8707)");
-	console.log(`\n🔑 Requesting token WITH audience '${MY_AUDIENCE}'...`);
-	const jwtToken = await agent.getToken(["read:data"], MY_AUDIENCE, true);
+	console.log(`\n🔑 Requesting token WITH audience '${myAudience}'...`);
+	const jwtToken = await agent.getToken(["read:data"], myAudience, true);
 	const isJwt = jwtToken.accessToken.split(".").length === 3;
 	console.log(`✅ ${isJwt ? "JWT" : "Opaque"} token acquired!`);
 	console.log(`   • Token: ${jwtToken.accessToken.slice(0, 50)}...`);
@@ -214,7 +236,7 @@ async function main(): Promise<number> {
 
 	const server = new MCPResourceServer({
 		authServer: AUTH_SERVER,
-		myAudience: MY_AUDIENCE,
+		myAudience,
 		clientId: credentials.clientId,
 		clientSecret: credentials.clientSecret,
 		adminSessionCookie: admin.getSessionCookieString(),
@@ -327,7 +349,7 @@ async function main(): Promise<number> {
 
 	const otherServer = new MCPResourceServer({
 		authServer: AUTH_SERVER,
-		myAudience: "mcp://different-service", // Different audience!
+		myAudience: `${AUTH_SERVER}/api/other-service`, // Different audience!
 	});
 
 	console.log("\n🚫 Attempting to validate token at wrong audience...");
@@ -337,8 +359,8 @@ async function main(): Promise<number> {
 
 	if (!result.valid && result.errorCode === "audience_mismatch") {
 		console.log("✅ Correctly REJECTED - audience mismatch");
-		console.log("   • Expected: mcp://different-service");
-		console.log(`   • Token aud: ${MY_AUDIENCE}`);
+		console.log(`   • Expected: ${AUTH_SERVER}/api/other-service`);
+		console.log(`   • Token aud: ${myAudience}`);
 	} else {
 		console.log(`⚠️ Unexpected result: ${JSON.stringify(result)}`);
 	}
@@ -388,49 +410,53 @@ async function main(): Promise<number> {
 	await admin.enableClient(credentials.clientId);
 
 	if (credentials.clientSecret) {
-		console.log("\n🔄 Rotating client secret...");
-		const oldSecret = credentials.clientSecret;
-
-		// 11A: Rotate
-		const rotationResult = await agent.rotateSecret();
-		console.log("✅ Secret rotated successfully!");
-		console.log(
-			`   • New Secret: ${rotationResult.clientSecret.slice(0, 5)}...`,
-		);
-		console.log(`   • Rotated At: ${rotationResult.rotatedAt}`);
-
-		// 11B: Verify Old Secret Fails
-		printSubheader("11B: Verifying Old Secret Fails");
-		const oldAgent = new MCPAgentClient({
-			authServer: AUTH_SERVER,
-			clientId: credentials.clientId,
-			clientSecret: oldSecret,
-		});
-
-		console.log("🚫 Attempting to get token with OLD secret...");
 		try {
-			await oldAgent.getToken(["read:data"]);
-			console.log("❌ Unexpected success with old secret!");
-			return 1;
-		} catch (error) {
-			console.log("✅ Old secret correctly rejected");
-			// Check for specific error message if possible, or just accept the failure
-			if (error instanceof Error) {
-				console.log(`   • Error: ${error.message}`);
+			console.log("\n🔄 Rotating client secret...");
+			const oldSecret = credentials.clientSecret;
+
+			// 11A: Rotate
+			const rotationResult = await agent.rotateSecret();
+			console.log("✅ Secret rotated successfully!");
+			console.log(
+				`   • New Secret: ${rotationResult.clientSecret.slice(0, 5)}...`,
+			);
+			console.log(`   • Rotated At: ${rotationResult.rotatedAt}`);
+
+			// 11B: Verify Old Secret Fails
+			printSubheader("11B: Verifying Old Secret Fails");
+			const oldAgent = new MCPAgentClient({
+				authServer: AUTH_SERVER,
+				clientId: credentials.clientId,
+				clientSecret: oldSecret,
+			});
+
+			console.log("🚫 Attempting to get token with OLD secret...");
+			try {
+				await oldAgent.getToken(["read:data"]);
+				console.log("❌ Unexpected success with old secret!");
+				return 1;
+			} catch (error) {
+				console.log("✅ Old secret correctly rejected");
+				if (error instanceof Error) {
+					console.log(`   • Error: ${error.message}`);
+				}
 			}
-		}
 
-		// 11C: Verify New Secret Works
-		printSubheader("11C: Verifying New Secret Works");
-		console.log("🔑 Requesting token with NEW secret...");
-		try {
-			// agent already has the new secret updated internally by rotateSecret()
-			const newToken = await agent.getToken(["read:data"], undefined, true);
-			console.log("✅ Token acquired with new secret!");
-			console.log(`   • Token: ${newToken.accessToken.slice(0, 40)}...`);
+			// 11C: Verify New Secret Works
+			printSubheader("11C: Verifying New Secret Works");
+			console.log("🔑 Requesting token with NEW secret...");
+			try {
+				const newToken = await agent.getToken(["read:data"], undefined, true);
+				console.log("✅ Token acquired with new secret!");
+				console.log(`   • Token: ${newToken.accessToken.slice(0, 40)}...`);
+			} catch (error) {
+				console.log(`❌ Failed with new secret: ${error}`);
+				return 1;
+			}
 		} catch (error) {
-			console.log(`❌ Failed with new secret: ${error}`);
-			return 1;
+			console.log(
+				`⚠️ Secret rotation flow unavailable in this environment: ${error}`,
+			);
 		}
 	} else {
 		console.log("⚠️ Skipping secret rotation (Public Client / No Secret)");

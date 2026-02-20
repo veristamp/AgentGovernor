@@ -1,36 +1,33 @@
 {
-  "qualifiedName": "filesystem.search-files",
-  "serverPrefix": "filesystem",
-  "name": "search-files",
-  "originalName": "search_files",
-  "description": "Recursively search for paths matching a glob pattern, relative to the search root. Only works within allowed directories.",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string"
-      },
-      "pattern": {
-        "type": "string"
-      },
-      "excludePatterns": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        },
-        "default": []
-      },
-      "limit": {
-        "type": "integer",
-        "exclusiveMinimum": 0,
-        "default": 5000
-      }
-    },
-    "required": [
-      "path",
-      "pattern"
-    ],
-    "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
-  }
+	"qualifiedName": "filesystem.search-files",
+	"serverPrefix": "filesystem",
+	"name": "search-files",
+	"originalName": "search_files",
+	"description": "Recursively search for paths matching a glob pattern, relative to the search root. Only works within allowed directories.",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"path": {
+				"type": "string"
+			},
+			"pattern": {
+				"type": "string"
+			},
+			"excludePatterns": {
+				"type": "array",
+				"items": {
+					"type": "string"
+				},
+				"default": []
+			},
+			"limit": {
+				"type": "integer",
+				"exclusiveMinimum": 0,
+				"default": 5000
+			}
+		},
+		"required": ["path", "pattern"],
+		"additionalProperties": false,
+		"$schema": "http://json-schema.org/draft-07/schema#"
+	}
 }

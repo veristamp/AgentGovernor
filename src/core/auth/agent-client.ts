@@ -32,10 +32,16 @@ import {
 } from "./errors";
 import type {
 	IntrospectionResponse,
+	LinkedProvidersResponse,
 	MCPAgentClientConfig,
 	MCPCredentials,
 	MCPToken,
 	ProtectedResourceMetadata,
+	ProviderLinkRequired,
+	ProviderLinkUrlResponse,
+	// OAuth Token Propagation types
+	ProviderTokenRequest,
+	ProviderTokenResponse,
 	RegistrationResponse,
 	TokenResponse,
 } from "./types";
@@ -204,9 +210,9 @@ export class MCPAgentClient {
 			formData.set("scope", scopes.join(" "));
 		}
 
-		// RFC 8707: Pass audience as 'resource' parameter to get JWT with aud claim
+		// Pass audience explicitly so backend can mint audience-bound JWTs.
 		if (audience) {
-			formData.set("resource", audience);
+			formData.set("audience", audience);
 		}
 
 		const response = await fetch(`${this.authServer}/api/auth/oauth2/token`, {
@@ -433,5 +439,373 @@ export class MCPAgentClient {
 	 */
 	getAllowedRoles(): string[] {
 		return this.credentials?.allowedRoles ?? [];
+	}
+
+	// =========================================================================
+	// OAuth Token Propagation (Third-Party Tokens)
+	// =========================================================================
+
+	/**
+	 * Get third-party OAuth tokens for external services.
+	 *
+	 * This enables MCP agents to access external services (GitHub, Google, etc.)
+	 * using the user's linked OAuth credentials.
+	 *
+	 * @param accessToken - The MCP access token (must be acting on behalf of a user)
+	 * @param providers - List of provider IDs to request tokens for
+	 * @param callbackUrl - Optional callback URL for linking (if providers are missing)
+	 * @returns ProviderTokenResponse with tokens and env vars for sandbox injection
+	 * @throws MCPAuthError if the request fails or if required providers are missing
+	 *
+	 * @example
+	 * ```typescript
+	 * const tokenResult = await agent.getProviderTokens(userToken, ['github', 'google']);
+	 * if (tokenResult.missingProviders.length > 0) {
+	 *   // Prompt user to link missing providers
+	 *   console.log('Please link:', tokenResult.authorizationUrls);
+	 * } else {
+	 *   // Use tokens
+	 *   process.env.GITHUB_TOKEN = tokenResult.env.GITHUB_TOKEN;
+	 * }
+	 * ```
+	 */
+	async getProviderTokens(
+		accessToken: string,
+		providers: string[],
+		callbackUrl?: string,
+	): Promise<ProviderTokenResponse | ProviderLinkRequired> {
+		const body: ProviderTokenRequest = {
+			providers,
+			callbackUrl,
+		};
+
+		const response = await fetch(`${this.authServer}/api/mcp/tokens`, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				"Content-Type": "application/json",
+				...getSdkHeaders(),
+			},
+			body: JSON.stringify(body),
+			signal: AbortSignal.timeout(this.timeout),
+		});
+
+		if (response.status === 200) {
+			return (await response.json()) as ProviderTokenResponse;
+		}
+
+		if (response.status === 403) {
+			const data = (await response.json()) as ProviderLinkRequired;
+			if (data.error === "provider_link_required") {
+				return data;
+			}
+		}
+
+		if (response.status === 401) {
+			throw new MCPAuthError("Authentication required for token propagation");
+		}
+
+		const errorData = (await response.json().catch(() => ({}))) as Record<
+			string,
+			string
+		>;
+		throw new MCPAuthError(
+			errorData.error_description ??
+				`Failed to get provider tokens: ${response.status}`,
+			errorData.error,
+		);
+	}
+
+	/**
+	 * List all linked OAuth providers for a user.
+	 *
+	 * @param accessToken - The MCP access token (must be acting on behalf of a user)
+	 * @returns List of linked provider accounts
+	 *
+	 * @example
+	 * ```typescript
+	 * const linked = await agent.getLinkedProviders(userToken);
+	 * console.log('User has linked:', linked.providers.map(p => p.providerId));
+	 * ```
+	 */
+	async getLinkedProviders(
+		accessToken: string,
+	): Promise<LinkedProvidersResponse> {
+		const response = await fetch(
+			`${this.authServer}/api/mcp/tokens/providers`,
+			{
+				method: "GET",
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					...getSdkHeaders(),
+				},
+				signal: AbortSignal.timeout(this.timeout),
+			},
+		);
+
+		if (response.status === 200) {
+			return (await response.json()) as LinkedProvidersResponse;
+		}
+
+		if (response.status === 401) {
+			throw new MCPAuthError(
+				"Authentication required to list linked providers",
+			);
+		}
+
+		const errorData = (await response.json().catch(() => ({}))) as Record<
+			string,
+			string
+		>;
+		throw new MCPAuthError(
+			errorData.error_description ??
+				`Failed to list providers: ${response.status}`,
+			errorData.error,
+		);
+	}
+
+	/**
+	 * Get the OAuth authorization URL for linking a provider.
+	 *
+	 * This URL should be presented to the user to initiate the OAuth
+	 * consent flow for linking their external account.
+	 *
+	 * @param providerId - Provider to link (e.g., "github", "google")
+	 * @param callbackUrl - Where to redirect after successful linking
+	 * @returns The authorization URL
+	 *
+	 * @example
+	 * ```typescript
+	 * const linkInfo = await agent.getProviderLinkUrl('github', '/settings/accounts');
+	 * console.log('Redirect user to:', linkInfo.authorizationUrl);
+	 * ```
+	 */
+	async getProviderLinkUrl(
+		providerId: string,
+		callbackUrl?: string,
+	): Promise<ProviderLinkUrlResponse> {
+		const params = new URLSearchParams();
+		if (callbackUrl) {
+			params.set("callbackUrl", callbackUrl);
+		}
+
+		const url =
+			`${this.authServer}/api/mcp/tokens/link/${providerId}` +
+			(params.toString() ? `?${params.toString()}` : "");
+
+		const response = await fetch(url, {
+			method: "GET",
+			headers: {
+				...getSdkHeaders(),
+			},
+			signal: AbortSignal.timeout(this.timeout),
+		});
+
+		if (response.status === 200) {
+			return (await response.json()) as ProviderLinkUrlResponse;
+		}
+
+		const errorData = (await response.json().catch(() => ({}))) as Record<
+			string,
+			string
+		>;
+		throw new MCPAuthError(
+			errorData.error_description ??
+				`Failed to get link URL: ${response.status}`,
+			errorData.error,
+		);
+	}
+
+	/**
+	 * Check if a ProviderTokenResponse indicates that provider linking is required.
+	 *
+	 * @param response - The response from getProviderTokens()
+	 * @returns True if the response is a ProviderLinkRequired error
+	 */
+	isProviderLinkRequired(
+		response: ProviderTokenResponse | ProviderLinkRequired,
+	): response is ProviderLinkRequired {
+		return "error" in response && response.error === "provider_link_required";
+	}
+
+	// =========================================================================
+	// Key Cabinet Methods (External Credential Management)
+	// =========================================================================
+
+	/**
+	 * Get credential tokens for external services (Key Cabinet).
+	 *
+	 * This is the enhanced version that supports per-agent consent.
+	 * Use this instead of getProviderTokens() for the new consent-aware flow.
+	 *
+	 * @param accessToken - The MCP access token (must be acting on behalf of a user)
+	 * @param providers - List of provider IDs to fetch tokens for
+	 * @returns Credential tokens or consent/missing provider info
+	 *
+	 * @example
+	 * ```typescript
+	 * const result = await agent.getCredentialTokens(userToken, ['github', 'linear']);
+	 * if (result.success) {
+	 *   // Inject tokens into agent environment
+	 *   Object.assign(process.env, result.env);
+	 * } else if (result.needsConsent.length > 0) {
+	 *   // Redirect user to grant consent
+	 *   console.log('User needs to grant consent:', result.authorizationUrls);
+	 * }
+	 * ```
+	 */
+	async getCredentialTokens(
+		accessToken: string,
+		providers: string[],
+	): Promise<{
+		success: boolean;
+		env: Record<string, string>;
+		needsConsent: string[];
+		missingProviders: string[];
+		authorizationUrls?: Record<string, string>;
+	}> {
+		const response = await fetch(
+			`${this.authServer}/api/mcp/credentials/tokens`,
+			{
+				method: "POST",
+				headers: {
+					...getSdkHeaders(),
+					Authorization: `Bearer ${accessToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ providers, mcpClientId: this.clientId }),
+				signal: AbortSignal.timeout(this.timeout),
+			},
+		);
+
+		if (response.status === 200) {
+			return (await response.json()) as {
+				success: boolean;
+				env: Record<string, string>;
+				needsConsent: string[];
+				missingProviders: string[];
+				authorizationUrls?: Record<string, string>;
+			};
+		}
+
+		const errorData = (await response.json().catch(() => ({}))) as Record<
+			string,
+			string
+		>;
+		throw new MCPAuthError(
+			errorData.error ?? `Failed to get credential tokens: ${response.status}`,
+			"credential_error",
+		);
+	}
+
+	/**
+	 * Check if credential access is available for a specific provider.
+	 * Used by Gate 2 for pre-flight checks.
+	 *
+	 * @param accessToken - The MCP access token
+	 * @param userId - The user ID to check
+	 * @param providerId - The provider to check
+	 * @param callbackUrl - Callback URL for linking/consent flows
+	 * @returns Access status with URLs for linking/consent if needed
+	 */
+	async checkCredentialAccess(
+		accessToken: string,
+		userId: string,
+		providerId: string,
+		callbackUrl: string,
+	): Promise<{
+		hasConsent: boolean;
+		hasCredential: boolean;
+		linkUrl?: string;
+		consentUrl?: string;
+		availableScopes?: string[];
+	}> {
+		const response = await fetch(
+			`${this.authServer}/api/mcp/credentials/check`,
+			{
+				method: "POST",
+				headers: {
+					...getSdkHeaders(),
+					Authorization: `Bearer ${accessToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					userId,
+					providerId,
+					mcpClientId: this.clientId,
+					callbackUrl,
+				}),
+				signal: AbortSignal.timeout(this.timeout),
+			},
+		);
+
+		if (response.status === 200) {
+			return (await response.json()) as {
+				hasConsent: boolean;
+				hasCredential: boolean;
+				linkUrl?: string;
+				consentUrl?: string;
+				availableScopes?: string[];
+			};
+		}
+
+		const errorData = (await response.json().catch(() => ({}))) as Record<
+			string,
+			string
+		>;
+		throw new MCPAuthError(
+			errorData.error ??
+				`Failed to check credential access: ${response.status}`,
+			"credential_error",
+		);
+	}
+
+	/**
+	 * List available external provider configurations.
+	 *
+	 * @returns List of supported external providers
+	 */
+	async getAvailableProviders(): Promise<{
+		providers: Array<{
+			id: string;
+			name: string;
+			icon: string | null;
+			type: string;
+			defaultScopes: string[];
+			envVarName: string;
+			isEnabled: boolean;
+		}>;
+	}> {
+		const response = await fetch(
+			`${this.authServer}/api/mcp/credentials/providers`,
+			{
+				method: "GET",
+				headers: getSdkHeaders(),
+				signal: AbortSignal.timeout(this.timeout),
+			},
+		);
+
+		if (response.status === 200) {
+			return (await response.json()) as {
+				providers: Array<{
+					id: string;
+					name: string;
+					icon: string | null;
+					type: string;
+					defaultScopes: string[];
+					envVarName: string;
+					isEnabled: boolean;
+				}>;
+			};
+		}
+
+		const errorData = (await response.json().catch(() => ({}))) as Record<
+			string,
+			string
+		>;
+		throw new MCPAuthError(
+			errorData.error ?? `Failed to get providers: ${response.status}`,
+			"provider_error",
+		);
 	}
 }

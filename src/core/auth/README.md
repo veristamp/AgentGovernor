@@ -39,7 +39,7 @@ const invite = await admin.createInvite({
 ### Agent: Registration & Token Acquisition
 
 ```typescript
-import { MCPAgentClient } from './src/core/auth';
+import { MCPAgentClient } from './src/auth';
 
 const agent = new MCPAgentClient({
   authServer: 'https://auth.example.com',
@@ -56,7 +56,7 @@ const token = await agent.getToken(['read:data']);
 // Get JWT token with audience (RFC 8707)
 const jwtToken = await agent.getToken(
   ['read:data'],
-  'mcp://rag-service' // Triggers JWT issuance
+  'https://api.example.com' // Triggers JWT issuance
 );
 ```
 
@@ -67,7 +67,7 @@ import { MCPResourceServer } from './src/auth';
 
 const server = new MCPResourceServer({
   authServer: 'https://auth.example.com',
-  myAudience: 'mcp://rag-service',
+  myAudience: 'https://api.example.com',
 });
 
 // Fast path: JWT validation with signature verification (default)
@@ -138,6 +138,8 @@ if (result.errorCode === 'invalid_signature') {
 | `register(clientName, metadata?)` | Register a new machine client |
 | `getToken(scopes?, audience?, forceRefresh?)` | Get access token (JWT if audience specified) |
 | `getCredentials()` | Get saved credentials |
+| `getProviderTokens(accessToken, providers, callbackUrl?)` | Request external provider tokens |
+| `getCredentialTokens(accessToken, providers)` | Request Key Cabinet tokens (consent-aware) |
 
 ### MCPResourceServer
 
@@ -164,13 +166,27 @@ if (result.errorCode === 'invalid_signature') {
 | `disableClient(clientId)` | Temporarily suspend client |
 | `enableClient(clientId)` | Re-enable client |
 | `revokeClient(clientId)` | Permanently revoke client |
+| `saveMcpServerToken(serverId, payload)` | Save MCP server token with optional declared scopes |
+| `getMcpServerToken(serverId, mcpClientId?)` | Get owner token status or consent-gated token material |
+| `grantMcpServerConsent(serverId, payload)` | Grant scoped consent to an MCP client |
+| `revokeMcpServerConsent(serverId, mcpClientId)` | Revoke consent for an MCP client |
+| `listMcpServers()` | List accessible MCP servers |
+| `getMcpServer(serverId)` | Get MCP server details |
+| `registerMcpServer(payload)` | Register a new MCP server |
+| `updateMcpServer(serverId, payload)` | Update MCP server metadata/config |
+| `deleteMcpServer(serverId)` | Delete an MCP server |
+| `discoverMcpServer(serverId)` | Re-run MCP auth discovery |
+| `startMcpServerAuth(serverId)` | Start OAuth auth flow for a server |
+| `shareMcpServer(serverId, payload)` | Share server with another user |
+| `revokeMcpServerShare(serverId, userId)` | Revoke a server share |
+| `getMcpServerShares(serverId)` | List all active shares for a server |
 
 **CreateInviteParams:**
 | Option | Type | Description |
 |--------|------|-------------|
 | `orgId` | `string` | Organization ID |
 | `budget` | `number` | Max registrations allowed |
-| `ttlMinutes` | `number` | Time to live in minutes |
+| `ttlSeconds` | `number` | Time to live in seconds |
 | `allowedScopes` | `string[]` | Scopes agents can request |
 | `allowedAudiences` | `string[]` | Valid audience values |
 | `allowedRoles` | `string[]` | RBAC roles to assign |
@@ -214,7 +230,7 @@ The TypeScript SDK is used natively by MCPClientManager:
 const manager = new MCPClientManager({
   enableAuth: true,
   authServer: 'https://auth.example.com',
-  myAudience: 'mcp://gcm',
+  myAudience: 'https://api.example.com/gcm',
 });
 
 // Validates JWT at GATE 2 before executing any tool
@@ -223,6 +239,67 @@ await manager.executeAction(
   { jwt: 'eyJ...' }  // Token validated here
 );
 ```
+
+## Key Cabinet (External Credentials)
+
+MCP agents can access third-party APIs (GitHub, Google, Slack, etc.) using credentials that users have explicitly linked and granted consent for. This is the "Key Cabinet" feature.
+
+### How It Works
+
+1. **User Links Credential**: User visits Key Cabinet in the console and links a provider (OAuth or API key)
+2. **Tokens Encrypted**: Credentials are stored encrypted at rest
+3. **User Grants Consent**: User explicitly grants an agent permission to access specific credentials
+4. **Agent Requests Token**: Agent calls the credentials endpoint with their client ID
+5. **Consent Verified**: Server checks if agent has been granted access
+6. **Token Returned**: If consent exists, decrypted token is returned
+
+### Requesting Credentials
+
+```typescript
+const agent = new MCPAgentClient({
+    authServer: 'https://auth.example.com',
+    clientId: 'mcp_client_xxx',
+    clientSecret: 'secret',
+});
+
+// Request credentials for external services
+const result = await agent.getCredentialTokens(
+    userAccessToken,       // MCP access token (user context)
+    ['github', 'slack']    // Providers to request
+);
+
+// Check result
+if (result.success) {
+    // Pre-formatted environment variables
+    console.log('Env:', result.env);
+    // { GITHUB_TOKEN: '...', SLACK_TOKEN: '...' }
+}
+
+if (result.needsConsent?.length) {
+    // User has linked these but hasn't granted agent access yet
+    console.log('Needs consent:', result.needsConsent);
+    console.log('Authorization URLs:', result.authorizationUrls);
+}
+
+if (result.missingProviders?.length) {
+    // User hasn't linked these providers yet
+    console.log('Missing:', result.missingProviders);
+    console.log('Authorization URLs:', result.authorizationUrls);
+}
+```
+
+### JWT Claims
+
+Access tokens include `linked_providers` claim showing which providers the user has linked (not which the agent can access - consent is checked at request time):
+
+```json
+{
+    "sub": "user_123",
+    "aud": "https://api.example.com/my-service",
+    "linked_providers": ["google", "github", "slack"]
+}
+```
+
 
 ## Environment Variables
 
@@ -236,7 +313,7 @@ MCP_CLIENT_ID=mcp_xxx           # After registration
 MCP_CLIENT_SECRET=secret        # After registration
 
 # For resource servers
-MCP_MY_AUDIENCE=mcp://my-service
+MCP_MY_AUDIENCE=https://api.example.com/my-service
 ```
 
 ## SDK Versioning

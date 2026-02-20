@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { validatePath } from "../path-validation.js";
 import { minimatch } from "minimatch";
+import { validatePath } from "../path-validation.js";
 
 export type GrepMatch = {
 	file: string;
@@ -56,18 +56,24 @@ async function searchWithRipgrep(
 	opts: GrepOptions,
 ): Promise<GrepMatch[]> {
 	const maxMatches = opts.maxMatches ?? 1000;
-	const contextLines = opts.contextLines ?? 0;
 	const args = [
 		"--line-number",
 		"--column",
 		"--no-heading",
 		"--with-filename",
 		"--case-insensitive", // Default to case-insensitive for agent use
-		"--max-count", String(maxMatches),
+		"--max-count",
+		String(maxMatches),
 	];
 
 	if (opts.contextLines && opts.contextLines > 0) {
-		args.push("--", "-B", String(opts.contextLines), "-A", String(opts.contextLines));
+		args.push(
+			"--",
+			"-B",
+			String(opts.contextLines),
+			"-A",
+			String(opts.contextLines),
+		);
 	}
 
 	if (opts.caseSensitive) {
@@ -80,7 +86,9 @@ async function searchWithRipgrep(
 
 	// Add file extensions filter if specified
 	if (opts.fileExtensions && opts.fileExtensions.length > 0) {
-		const extPatterns = opts.fileExtensions.map((ext) => `*.${ext.replace(/^\./, "")}`);
+		const extPatterns = opts.fileExtensions.map(
+			(ext) => `*.${ext.replace(/^\./, "")}`,
+		);
 		args.push(...extPatterns);
 	}
 
@@ -98,11 +106,6 @@ async function searchWithRipgrep(
 		const matches: GrepMatch[] = [];
 		const proc = spawn("rg", args, {
 			stdio: ["ignore", "pipe", "pipe"],
-		});
-
-		let stderr = "";
-		proc.stderr.on("data", (data) => {
-			stderr += data.toString();
 		});
 
 		const chunks: Buffer[] = [];
@@ -159,7 +162,7 @@ function parseRipgrepLine(line: string): GrepMatch | null {
 	if (colonIdx2 === -1) {
 		// Just file:line - no content
 		const lineNum = parseInt(rest, 10);
-		if (isNaN(lineNum)) return null;
+		if (Number.isNaN(lineNum)) return null;
 		return {
 			file,
 			line: lineNum,
@@ -169,14 +172,14 @@ function parseRipgrepLine(line: string): GrepMatch | null {
 	}
 
 	const lineNum = parseInt(rest.slice(0, colonIdx2), 10);
-	if (isNaN(lineNum)) return null;
+	if (Number.isNaN(lineNum)) return null;
 
 	const afterCol = rest.slice(colonIdx2 + 1);
 	const colonIdx3 = afterCol.indexOf(":");
 	if (colonIdx3 === -1) return null;
 
 	const column = parseInt(afterCol.slice(0, colonIdx3), 10);
-	if (isNaN(column)) return null;
+	if (Number.isNaN(column)) return null;
 
 	const content = afterCol.slice(colonIdx3 + 1);
 
@@ -239,7 +242,11 @@ async function searchWithNode(
 				try {
 					const content = await fs.readFile(full, "utf-8");
 					const lines = content.split("\n");
-					for (let i = 0; i < lines.length && matches.length < maxMatches; i++) {
+					for (
+						let i = 0;
+						i < lines.length && matches.length < maxMatches;
+						i++
+					) {
 						const line = lines[i];
 						let matched = false;
 
@@ -306,16 +313,17 @@ export function formatGrepResults(matches: GrepMatch[]): string {
 		if (!grouped.has(match.file)) {
 			grouped.set(match.file, []);
 		}
-		grouped.get(match.file)!.push(match);
+		const fileMatches = grouped.get(match.file);
+		if (fileMatches) {
+			fileMatches.push(match);
+		}
 	}
 
 	const lines: string[] = [];
 	for (const [file, fileMatches] of grouped) {
 		lines.push(`\n${file}:`);
 		for (const match of fileMatches) {
-			const content = match.lineContent
-				? ` | ${match.lineContent}`
-				: "";
+			const content = match.lineContent ? ` | ${match.lineContent}` : "";
 			lines.push(`  ${match.line}:${match.column}${content}`);
 		}
 	}

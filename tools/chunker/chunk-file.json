@@ -1,72 +1,70 @@
 {
-  "qualifiedName": "chunker.chunk-file",
-  "serverPrefix": "chunker",
-  "name": "chunk-file",
-  "originalName": "chunk_file",
-  "description": "Chunk a single file into structured JSON output.",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "file_path": {
-        "title": "File Path",
-        "type": "string"
-      },
-      "output_path": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Output Path"
-      },
-      "overlap_tokens": {
-        "default": 300,
-        "title": "Overlap Tokens",
-        "type": "integer"
-      },
-      "max_tokens_text": {
-        "default": 2000,
-        "title": "Max Tokens Text",
-        "type": "integer"
-      },
-      "split_code_max_lines": {
-        "default": 50,
-        "title": "Split Code Max Lines",
-        "type": "integer"
-      },
-      "split_table_rows": {
-        "default": 100,
-        "title": "Split Table Rows",
-        "type": "integer"
-      },
-      "use_treesitter": {
-        "default": true,
-        "title": "Use Treesitter",
-        "type": "boolean"
-      },
-      "emit_heading_chunks": {
-        "default": true,
-        "title": "Emit Heading Chunks",
-        "type": "boolean"
-      },
-      "inject_headers": {
-        "default": true,
-        "title": "Inject Headers",
-        "type": "boolean"
-      },
-      "include_chunks": {
-        "default": false,
-        "title": "Include Chunks",
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "file_path"
-    ],
-    "title": "chunk_fileArguments"
-  }
+	"qualifiedName": "chunker.chunk-file",
+	"serverPrefix": "chunker",
+	"name": "chunk-file",
+	"originalName": "chunk_file",
+	"description": "Chunk a single file into structured JSON output.",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"file_path": {
+				"title": "File Path",
+				"type": "string"
+			},
+			"output_path": {
+				"anyOf": [
+					{
+						"type": "string"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Output Path"
+			},
+			"overlap_tokens": {
+				"default": 300,
+				"title": "Overlap Tokens",
+				"type": "integer"
+			},
+			"max_tokens_text": {
+				"default": 2000,
+				"title": "Max Tokens Text",
+				"type": "integer"
+			},
+			"split_code_max_lines": {
+				"default": 50,
+				"title": "Split Code Max Lines",
+				"type": "integer"
+			},
+			"split_table_rows": {
+				"default": 100,
+				"title": "Split Table Rows",
+				"type": "integer"
+			},
+			"use_treesitter": {
+				"default": true,
+				"title": "Use Treesitter",
+				"type": "boolean"
+			},
+			"emit_heading_chunks": {
+				"default": true,
+				"title": "Emit Heading Chunks",
+				"type": "boolean"
+			},
+			"inject_headers": {
+				"default": true,
+				"title": "Inject Headers",
+				"type": "boolean"
+			},
+			"include_chunks": {
+				"default": false,
+				"title": "Include Chunks",
+				"type": "boolean"
+			}
+		},
+		"required": ["file_path"],
+		"title": "chunk_fileArguments"
+	}
 }

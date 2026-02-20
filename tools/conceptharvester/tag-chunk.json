@@ -1,86 +1,84 @@
 {
-  "qualifiedName": "conceptharvester.tag-chunk",
-  "serverPrefix": "conceptharvester",
-  "name": "tag-chunk",
-  "originalName": "tag_chunk",
-  "description": "Extract concepts from a single chunk (no DB resolution).",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "chunk": {
-        "additionalProperties": true,
-        "title": "Chunk",
-        "type": "object"
-      },
-      "root_topic": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Root Topic"
-      },
-      "disambiguate_noise": {
-        "default": true,
-        "title": "Disambiguate Noise",
-        "type": "boolean"
-      },
-      "model_name": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Model Name"
-      },
-      "base_threshold": {
-        "anyOf": [
-          {
-            "type": "number"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Base Threshold"
-      },
-      "max_text_chars": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Max Text Chars"
-      },
-      "include_scores": {
-        "anyOf": [
-          {
-            "type": "boolean"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Include Scores"
-      }
-    },
-    "required": [
-      "chunk"
-    ],
-    "title": "tag_chunkArguments"
-  }
+	"qualifiedName": "conceptharvester.tag-chunk",
+	"serverPrefix": "conceptharvester",
+	"name": "tag-chunk",
+	"originalName": "tag_chunk",
+	"description": "Extract concepts from a single chunk (no DB resolution).",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"chunk": {
+				"additionalProperties": true,
+				"title": "Chunk",
+				"type": "object"
+			},
+			"root_topic": {
+				"anyOf": [
+					{
+						"type": "string"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Root Topic"
+			},
+			"disambiguate_noise": {
+				"default": true,
+				"title": "Disambiguate Noise",
+				"type": "boolean"
+			},
+			"model_name": {
+				"anyOf": [
+					{
+						"type": "string"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Model Name"
+			},
+			"base_threshold": {
+				"anyOf": [
+					{
+						"type": "number"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Base Threshold"
+			},
+			"max_text_chars": {
+				"anyOf": [
+					{
+						"type": "integer"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Max Text Chars"
+			},
+			"include_scores": {
+				"anyOf": [
+					{
+						"type": "boolean"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Include Scores"
+			}
+		},
+		"required": ["chunk"],
+		"title": "tag_chunkArguments"
+	}
 }

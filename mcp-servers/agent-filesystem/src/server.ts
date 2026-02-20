@@ -17,13 +17,13 @@ import {
 	searchFiles,
 	writeFile,
 } from "./lib/fs-ops.js";
+import { formatGrepResults, grepSearch } from "./lib/grep-ops.js";
 import {
 	editFileReplace,
 	patchLines,
 	patchSpan,
 	stitchFile,
 } from "./lib/patch-ops.js";
-import { grepSearch, formatGrepResults } from "./lib/grep-ops.js";
 import { getValidRootDirectories } from "./roots-utils.js";
 import {
 	getAllowedDirectories,

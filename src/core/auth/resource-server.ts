@@ -11,7 +11,7 @@
  * ```typescript
  * const server = new MCPResourceServer({
  *   authServer: 'https://auth.example.com',
- *   myAudience: 'mcp://rag-service',
+ *   myAudience: 'https://api.example.com',
  * });
  *
  * const result = await server.validateToken(token, {
@@ -38,6 +38,7 @@ import type {
 	ClientStatus,
 	ClientStatusResponse,
 	IntrospectionResponse,
+	JWTClaims,
 	MCPResourceServerConfig,
 	ValidationResult,
 } from "./types";
@@ -136,7 +137,7 @@ export class MCPResourceServer {
 		requireActiveCheck: boolean = false,
 		verifySignature: boolean = false,
 	): Promise<ValidationResult> {
-		let claims;
+		let claims: JWTClaims | null;
 
 		// Optionally verify signature using JWKS
 		if (verifySignature) {
@@ -161,6 +162,14 @@ export class MCPResourceServer {
 					errorCode: "invalid_token",
 				};
 			}
+		}
+		if (!claims) {
+			return {
+				valid: false,
+				scopes: [],
+				error: "Invalid JWT claims",
+				errorCode: "invalid_token",
+			};
 		}
 
 		// Check expiration
@@ -369,7 +378,7 @@ export class MCPResourceServer {
 			headers["x-api-key"] = this.adminApiKey;
 		}
 		if (this.adminSessionCookie) {
-			headers["Cookie"] = this.adminSessionCookie;
+			headers.Cookie = this.adminSessionCookie;
 		}
 
 		try {

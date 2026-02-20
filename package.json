@@ -12,7 +12,13 @@
 		"test": "bun test",
 		"analyze": "uv run auditor/analyzer.py",
 		"execute": "bun run src/cli/index.ts --execute",
-		"sync": "bun run src/cli/commands/sync-registry.ts"
+		"sync": "bun run src/cli/commands/sync-registry.ts",
+		"biome:format": "bunx biome format --write",
+		"biome:format:files": "bunx biome format --write",
+		"biome:lint": "bunx biome lint --write",
+		"biome:lint:files": "bunx biome lint --write",
+		"biome:check": "bunx biome check --write",
+		"biome:check:files": "bunx biome check --write"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.12",

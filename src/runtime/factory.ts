@@ -1,8 +1,12 @@
-import { wrapLanguageModel, type LanguageModel } from "ai";
 import type { LanguageModelV3 } from "@ai-sdk/provider";
+import { type LanguageModel, wrapLanguageModel } from "ai";
 import type { MCPClientManager } from "../core/mcp/manager";
 import type { PolicyEngine } from "../core/policy/engine";
-import { cacheMiddleware, governanceMiddleware, type RuntimeIdentity } from "./middleware";
+import {
+	cacheMiddleware,
+	governanceMiddleware,
+	type RuntimeIdentity,
+} from "./middleware";
 import type { AgentLoopTool, AgentLoopToolContext } from "./types";
 
 export interface RuntimeContext {
@@ -26,7 +30,7 @@ export interface RuntimeOptions {
 
 /**
  * Agent Runtime Factory
- * 
+ *
  * Creates runtime with AI SDK v6 middleware pattern using wrapLanguageModel.
  */
 export async function createAgentRuntime(
@@ -40,7 +44,10 @@ export async function createAgentRuntime(
 	// Apply governance middleware
 	let wrappedModel = wrapLanguageModel({
 		model: v3Model,
-		middleware: governanceMiddleware({ policy: ctx.policy, identity: ctx.identity }),
+		middleware: governanceMiddleware({
+			policy: ctx.policy,
+			identity: ctx.identity,
+		}),
 	});
 
 	// Apply caching middleware if enabled
@@ -69,7 +76,7 @@ export async function createAgentRuntime(
 			inputSchema: toolDef.inputSchema ?? {},
 			execute: async (
 				args: Record<string, unknown>,
-				toolCtx: AgentLoopToolContext,
+				_toolCtx: AgentLoopToolContext,
 			) => {
 				// The "System Call" to the Kernel
 				// We inject the identity from the RuntimeContext, overriding or merging

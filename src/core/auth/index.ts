@@ -36,7 +36,7 @@
  * const token = await agent.getToken(['read:data']);
  *
  * // Get JWT token with audience (RFC 8707)
- * const jwtToken = await agent.getToken(['read:data'], 'mcp://rag-service');
+ * const jwtToken = await agent.getToken(['read:data'], 'https://api.example.com');
  * ```
  *
  * @example Resource Server Token Validation
@@ -45,7 +45,7 @@
  *
  * const server = new MCPResourceServer({
  *   authServer: 'https://auth.example.com',
- *   myAudience: 'mcp://rag-service',
+ *   myAudience: 'https://api.example.com',
  * });
  *
  * // Fast path: JWT validation (stateless, ~0.1ms)
@@ -79,6 +79,7 @@ export { MCPAgentClient, type RegisterOptions } from "./agent-client";
 // Errors
 export {
 	MCPAuthError,
+	MCPConsentError,
 	MCPError,
 	MCPRateLimitError,
 	MCPRegistrationError,
@@ -112,17 +113,55 @@ export {
 export type {
 	ClientStatus,
 	ClientStatusResponse,
+	CredentialAccessResult,
+	CredentialsListResponse,
+	CredentialTokensResponse,
+	// Key Cabinet types (per-agent consent)
+	ExternalCredentialInfo,
+	ExternalProviderConfig,
+	GrantConsentRequest,
+	GrantMCPServerConsentRequest,
 	IntrospectionResponse,
 	JWTClaims,
+	// OAuth Token Propagation types
+	LinkedProvider,
+	LinkedProvidersResponse,
 	MCPAdminClientConfig,
 	MCPAgentClientConfig,
 	MCPCredentials,
 	MCPResourceServerConfig,
+	MCPServerAuthStartResponse,
+	MCPServerConsentGrantResponse,
+	MCPServerDetail,
+	MCPServerDiscoverResponse,
+	MCPServerInfo,
+	MCPServerListResponse,
+	MCPServerShare,
+	MCPServerSharePermission,
+	MCPServerSharesResponse,
+	MCPServerTokenErrorCode,
+	MCPServerTokenForClientResponse,
+	MCPServerTokenStatusResponse,
+	MCPServerTransport,
+	MCPServerVisibility,
 	MCPToken,
 	ProtectedResourceMetadata,
+	ProviderLinkRequired,
+	ProviderLinkUrlResponse,
+	ProvidersListResponse,
+	ProviderTokenRequest,
+	ProviderTokenResponse,
 	RateLimitInfo,
+	RegisterMCPServerRequest,
+	RegisterMCPServerResponse,
 	RegistrationResponse,
+	SaveApiKeyRequest,
+	SaveMCPServerTokenRequest,
+	ShareMCPServerRequest,
+	ShareMCPServerResponse,
 	TokenResponse,
+	UpdateMCPServerRequest,
+	UpdateMCPServerResponse,
 	ValidationErrorCode,
 	ValidationResult,
 } from "./types";

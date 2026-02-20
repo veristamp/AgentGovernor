@@ -32,8 +32,12 @@ export function decodeJWT(token: string): JWTClaims | null {
 		if (parts.length !== 3) {
 			return null;
 		}
+		const payload = parts[1];
+		if (!payload) {
+			return null;
+		}
 
-		const payloadJson = base64UrlDecode(parts[1]!);
+		const payloadJson = base64UrlDecode(payload);
 		return JSON.parse(payloadJson) as JWTClaims;
 	} catch {
 		return null;
@@ -58,8 +62,12 @@ export function decodeJWTHeader(
 		if (parts.length !== 3) {
 			return null;
 		}
+		const header = parts[0];
+		if (!header) {
+			return null;
+		}
 
-		const headerJson = base64UrlDecode(parts[0]!);
+		const headerJson = base64UrlDecode(header);
 		return JSON.parse(headerJson);
 	} catch {
 		return null;

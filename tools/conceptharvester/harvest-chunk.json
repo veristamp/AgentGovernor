@@ -1,81 +1,79 @@
 {
-  "qualifiedName": "conceptharvester.harvest-chunk",
-  "serverPrefix": "conceptharvester",
-  "name": "harvest-chunk",
-  "originalName": "harvest_chunk",
-  "description": "Extract and resolve concepts to weighted graph edges (requires DB).",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "chunk": {
-        "additionalProperties": true,
-        "title": "Chunk",
-        "type": "object"
-      },
-      "root_topic": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Root Topic"
-      },
-      "model_name": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Model Name"
-      },
-      "base_threshold": {
-        "anyOf": [
-          {
-            "type": "number"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Base Threshold"
-      },
-      "max_text_chars": {
-        "anyOf": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Max Text Chars"
-      },
-      "include_scores": {
-        "anyOf": [
-          {
-            "type": "boolean"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Include Scores"
-      }
-    },
-    "required": [
-      "chunk"
-    ],
-    "title": "harvest_chunkArguments"
-  }
+	"qualifiedName": "conceptharvester.harvest-chunk",
+	"serverPrefix": "conceptharvester",
+	"name": "harvest-chunk",
+	"originalName": "harvest_chunk",
+	"description": "Extract and resolve concepts to weighted graph edges (requires DB).",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"chunk": {
+				"additionalProperties": true,
+				"title": "Chunk",
+				"type": "object"
+			},
+			"root_topic": {
+				"anyOf": [
+					{
+						"type": "string"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Root Topic"
+			},
+			"model_name": {
+				"anyOf": [
+					{
+						"type": "string"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Model Name"
+			},
+			"base_threshold": {
+				"anyOf": [
+					{
+						"type": "number"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Base Threshold"
+			},
+			"max_text_chars": {
+				"anyOf": [
+					{
+						"type": "integer"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Max Text Chars"
+			},
+			"include_scores": {
+				"anyOf": [
+					{
+						"type": "boolean"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Include Scores"
+			}
+		},
+		"required": ["chunk"],
+		"title": "harvest_chunkArguments"
+	}
 }

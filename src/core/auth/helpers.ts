@@ -7,7 +7,7 @@
 import { MCPAgentClient } from "./agent-client";
 import type { ValidateTokenOptions } from "./resource-server";
 import { MCPResourceServer } from "./resource-server";
-import type { MCPCredentials, MCPToken, ValidationResult } from "./types";
+import type { MCPCredentials, ValidationResult } from "./types";
 
 /**
  * One-shot agent registration.

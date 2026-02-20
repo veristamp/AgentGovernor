@@ -180,10 +180,10 @@ export function createEngramTools(engram: EngramService): AgentLoopTool[] {
 						file: data.docUrl,
 						lines: `${data.lineStart}-${data.lineEnd}`,
 						...(includeFlow && data.prevContent
-							? { prevContent: data.prevContent.slice(0, 200) + "..." }
+							? { prevContent: `${data.prevContent.slice(0, 200)}...` }
 							: {}),
 						...(includeFlow && data.nextContent
-							? { nextContent: data.nextContent.slice(0, 200) + "..." }
+							? { nextContent: `${data.nextContent.slice(0, 200)}...` }
 							: {}),
 					});
 				}
