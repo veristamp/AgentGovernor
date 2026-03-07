@@ -8,7 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
-docs
 old
 static
 templates
@@ -24,3 +23,21 @@ qdrant_data
 memory.json
 tool_schema.json
 uv.lock
+tools_schema.json
+node_modules
+output
+sdk
+legacy
+workflows_gcm
+workflows_test
+skills_test_e2e
+policy/role_permissions_e2e.json
+memory.jsonl
+.opencode
+.ruff_cache
+registry.sqlite
+registry.sqlite-shm
+registry.sqlite-wal
+drizzle
+bun.lock
+docs

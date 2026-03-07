@@ -1,0 +1,55 @@
+{
+	"skillRef": "skills:docs-to-files@1",
+	"skillId": "docs-to-files",
+	"version": "1",
+	"description": "Fetch Context7 documentation for a topic and write it to disk.",
+	"keywords": ["docs", "to", "files"],
+	"functions": [
+		{
+			"name": "fetch_and_store",
+			"summary": "Resolve a library id, fetch docs, and write a markdown file.",
+			"params": [
+				{
+					"name": "library",
+					"type": "string",
+					"required": true,
+					"description": "Library name or Context7 /org/project id."
+				},
+				{
+					"name": "topic",
+					"type": "string",
+					"required": true,
+					"description": "Documentation topic to fetch."
+				},
+				{
+					"name": "output_dir",
+					"type": "string",
+					"required": true,
+					"description": "Directory to write the docs into."
+				},
+				{
+					"name": "file_name",
+					"type": "string",
+					"required": false,
+					"description": "Optional filename override."
+				},
+				{
+					"name": "mode",
+					"type": "string",
+					"required": false,
+					"description": "Context7 mode (code or info)."
+				}
+			],
+			"returns": {
+				"type": "object",
+				"description": "Library id, topic, and output path."
+			}
+		}
+	],
+	"examples": [
+		{
+			"title": "Fetch Next.js routing docs",
+			"code": "import skills\n\nasync def main():\n    result = await skills.load(\"docs-to-files\").fetch_and_store(\n        library=\"/vercel/next.js\",\n        topic=\"routing\",\n        output_dir=\"output/docs\",\n    )\n    return result\n"
+		}
+	]
+}

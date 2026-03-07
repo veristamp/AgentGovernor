@@ -1,0 +1,11 @@
+{
+	"skillId": "fetch_and_store_documentation",
+	"version": 1,
+	"description": "Fetch documentation from a URL and store it in a file.",
+	"interfaces": ["fetch_and_store(url, file_path)"],
+	"bindings": {
+		"shell": "terminal",
+		"fs": "filesystem"
+	},
+	"fanoutTools": ["terminal.run-command", "filesystem.write-file"]
+}

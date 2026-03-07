@@ -1,0 +1,62 @@
+{
+	"qualifiedName": "chunker.chunk-content",
+	"serverPrefix": "chunker",
+	"name": "chunk-content",
+	"originalName": "chunk_content",
+	"description": "Chunk raw content without reading from disk.",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"content": {
+				"title": "Content",
+				"type": "string"
+			},
+			"filename": {
+				"title": "Filename",
+				"type": "string"
+			},
+			"overlap_tokens": {
+				"default": 300,
+				"title": "Overlap Tokens",
+				"type": "integer"
+			},
+			"max_tokens_text": {
+				"default": 2000,
+				"title": "Max Tokens Text",
+				"type": "integer"
+			},
+			"split_code_max_lines": {
+				"default": 50,
+				"title": "Split Code Max Lines",
+				"type": "integer"
+			},
+			"split_table_rows": {
+				"default": 100,
+				"title": "Split Table Rows",
+				"type": "integer"
+			},
+			"use_treesitter": {
+				"default": true,
+				"title": "Use Treesitter",
+				"type": "boolean"
+			},
+			"emit_heading_chunks": {
+				"default": true,
+				"title": "Emit Heading Chunks",
+				"type": "boolean"
+			},
+			"inject_headers": {
+				"default": true,
+				"title": "Inject Headers",
+				"type": "boolean"
+			},
+			"include_chunks": {
+				"default": false,
+				"title": "Include Chunks",
+				"type": "boolean"
+			}
+		},
+		"required": ["content", "filename"],
+		"title": "chunk_contentArguments"
+	}
+}

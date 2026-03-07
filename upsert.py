@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Script to ingest tools (from tools_schema.json) AND
-workflows (from a directory) into separate Qdrant vector databases.
+Script to ingest tools (from tools_schema.json), skills (from skills/),
+and workflows (from workflows/) into separate Qdrant vector databases.
+
+Governed Code Mode: Skills are the primary retrieval target.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import yaml
 from pathlib import Path
@@ -19,6 +22,7 @@ from qdrant_client.http import models as qm
 try:
     from Agent.embedder import Embedder, SparseBM25
     from Agent import config as agent_config
+    from Agent.skill_loader import load_all_skills
 except ImportError:
     print("Error: Could not import from 'Agent' package.")
     print("Please run this script from the root of your 'mcp-inspector' project.")
@@ -86,9 +90,11 @@ def ensure_collection(
 # --- Config (Hardcoded) ---
 QDRANT_URL = agent_config.QDRANT_URL
 TOOLS_COLLECTION_NAME = agent_config.QDRANT_COLLECTION_NAME  # "mcp_tools"
-WORKFLOW_COLLECTION_NAME = "mcp_workflows"  # New collection for workflows
+WORKFLOW_COLLECTION_NAME = "mcp_workflows"  # Collection for YAML workflows
+SKILL_COLLECTION_NAME = "mcp_skills"  # NEW: Collection for Python skills
 TOOLS_FILE = "tools_schema.json"
 WORKFLOW_DIR = "workflows"
+SKILLS_DIR = "skills"  # NEW: Directory for skill definitions
 EMBED_MODEL = agent_config.DENSE_EMBED_MODEL
 SPARSE_MODEL = agent_config.SPARSE_EMBED_MODEL
 
@@ -186,6 +192,46 @@ def load_workflows_data(workflow_dir: str) -> List[ItemData]:
             log.error(f"Error loading {yaml_file.name}: {e}")
             
     log.info(f"Loaded {len(items)} workflows from {workflow_dir}")
+    return items
+
+
+def load_skills_data(skills_dir: str) -> List[ItemData]:
+    """Loads skills from the SKILL.md files in subdirectories."""
+    items: List[ItemData] = []
+    skills_path = Path(skills_dir)
+    if not skills_path.is_dir():
+        log.warning(f"Skills directory not found at {skills_dir}. Skipping.")
+        return []
+    
+    # Use the skill_loader module
+    skills = load_all_skills(skills_path)
+    
+    for skill in skills:
+        pid = str(uuid5(NAMESPACE_URL, f"skill:{skill.name}"))
+        
+        # Build rich embed text for semantic search
+        bindings_text = ", ".join(skill.bindings) if skill.bindings else "none"
+        embed_text = f"""Skill: {skill.name}
+Description: {skill.description}
+Bindings/Tools: {bindings_text}
+---
+{skill.content[:2000]}"""  # Include some content for context
+        
+        payload = {
+            "type": "skill",
+            "name": skill.name,
+            "description": skill.description,
+            "bindings": skill.bindings,
+            "skill_path": str(skill.path),
+            "content": skill.content,  # Full content for retrieval
+            "version": skill.version,
+            "author": skill.author,
+            "embed_text": embed_text
+        }
+        items.append((pid, embed_text, payload))
+        log.info(f"  Loaded skill: {skill.name} (bindings: {len(skill.bindings)})")
+    
+    log.info(f"Loaded {len(items)} skills from {skills_dir}")
     return items
 
 def prepare_and_embed(
@@ -298,6 +344,33 @@ def main():
             log.error(f"Error during workflow upsert: {e}", exc_info=True)
     else:
         log.info("No workflows found to ingest.")
+
+    # --- 4. Process Skills (NEW: Governed Code Mode) ---
+    skill_items = load_skills_data(SKILLS_DIR)
+    if skill_items:
+        log.info(f"--- Processing {len(skill_items)} Skills ---")
+        try:
+            ensure_collection(
+                client,
+                name=SKILL_COLLECTION_NAME,
+                dense_dim=dense_embedder.dim,
+                bulk_ingest=True
+            )
+            
+            skill_points = prepare_and_embed(skill_items, dense_embedder, sparse_embedder)
+            
+            log.info(f"Upserting {len(skill_points)} skill points to collection '{SKILL_COLLECTION_NAME}'...")
+            client.upsert(
+                collection_name=SKILL_COLLECTION_NAME,
+                points=skill_points,
+                wait=True
+            )
+            log.info("Successfully upserted skills.")
+        
+        except Exception as e:
+            log.error(f"Error during skill upsert: {e}", exc_info=True)
+    else:
+        log.info("No skills found to ingest.")
 
     log.info("--- Ingestion Complete ---")
 

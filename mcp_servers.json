@@ -1,41 +1,52 @@
-
 {
-  "FileSystem": {
-      "connection_type": "stdio",
-      "command": "python",
-      "args": ["-u", "filesystem.py"],
-      "cwd": ".",  
-      "timeout": 5.0,
-      "disabled": false
-  },
-  "Terminal": {
-      "connection_type": "stdio",
-      "command": "python",
-      "args": ["-u", "terminal.py"],
-      "cwd": ".",  
-      "timeout": 5.0,
-      "disabled": false
-  },
-  "Memory": {
-        "connection_type": "stdio",
-        "command": "python",
-        "args": ["-u", "memory.py"],
-        "cwd": ".",
-        "timeout": 5.0,
-        "disabled": false
-  },
-  "context7": {
-    "command": "npx",
-    "args": ["-y", "@upstash/context7-mcp@latest"],
-    "disabled": false
-  },
-  "modelcontextprotocol python sdk": {
-    "command": "npx",
-    "args": [
-      "-y",
-      "mcp-code-graph@latest",
-      "modelcontextprotocol/python-sdk"
-    ],
-    "disabled": false
-  }
+	"FileSystem": {
+		"connection_type": "stdio",
+		"command": "bun",
+		"args": ["run", "mcp-servers/agent-filesystem/src/index.ts", "."],
+		"cwd": ".",
+		"timeout": 5.0,
+		"disabled": false
+	},
+	"Terminal": {
+		"connection_type": "stdio",
+		"command": "uv",
+		"args": ["run", "mcp-servers/terminal/terminal.py"],
+		"cwd": ".",
+		"timeout": 5.0,
+		"disabled": false
+	},
+	"Memory": {
+		"connection_type": "stdio",
+		"command": "bun",
+		"args": ["run", "mcp-servers/memory/src/memory.ts"],
+		"cwd": ".",
+		"timeout": 5.0,
+		"disabled": false
+	},
+	"Chunker": {
+		"connection_type": "stdio",
+		"command": "uv",
+		"args": ["run", "mcp-servers/chunker/server.py"],
+		"cwd": ".",
+		"timeout": 5.0,
+		"disabled": false
+	},
+	"ConceptHarvester": {
+		"connection_type": "stdio",
+		"command": "uv",
+		"args": ["run", "mcp-servers/concept-harvester/server.py"],
+		"cwd": ".",
+		"timeout": 5.0,
+		"disabled": false
+	},
+	"context7": {
+		"command": "npx",
+		"args": ["-y", "@upstash/context7-mcp@latest"],
+		"disabled": false
+	},
+	"modelcontextprotocol python sdk": {
+		"command": "npx",
+		"args": ["-y", "mcp-code-graph@latest", "modelcontextprotocol/python-sdk"],
+		"disabled": false
+	}
 }

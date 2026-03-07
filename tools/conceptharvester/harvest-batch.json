@@ -1,0 +1,82 @@
+{
+	"qualifiedName": "conceptharvester.harvest-batch",
+	"serverPrefix": "conceptharvester",
+	"name": "harvest-batch",
+	"originalName": "harvest_batch",
+	"description": "Batch extract and resolve concepts to graph edges (requires DB).",
+	"schema": {
+		"type": "object",
+		"properties": {
+			"chunks": {
+				"items": {
+					"additionalProperties": true,
+					"type": "object"
+				},
+				"title": "Chunks",
+				"type": "array"
+			},
+			"root_topic": {
+				"anyOf": [
+					{
+						"type": "string"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Root Topic"
+			},
+			"model_name": {
+				"anyOf": [
+					{
+						"type": "string"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Model Name"
+			},
+			"base_threshold": {
+				"anyOf": [
+					{
+						"type": "number"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Base Threshold"
+			},
+			"max_text_chars": {
+				"anyOf": [
+					{
+						"type": "integer"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Max Text Chars"
+			},
+			"include_scores": {
+				"anyOf": [
+					{
+						"type": "boolean"
+					},
+					{
+						"type": "null"
+					}
+				],
+				"default": null,
+				"title": "Include Scores"
+			}
+		},
+		"required": ["chunks"],
+		"title": "harvest_batchArguments"
+	}
+}

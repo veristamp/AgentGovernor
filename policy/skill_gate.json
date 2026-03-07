@@ -1,0 +1,63 @@
+{
+	"forbidden_imports": [
+		"aiohttp",
+		"requests",
+		"httpx",
+		"urllib",
+		"urllib.request",
+		"urllib3",
+		"socket",
+		"subprocess",
+		"ftplib",
+		"paramiko"
+	],
+	"forbidden_calls": ["open", "mcp.use"],
+	"forbidden_prefixes": [
+		"requests.",
+		"httpx.",
+		"urllib.",
+		"socket.",
+		"subprocess.",
+		"ftplib.",
+		"paramiko.",
+		"os.system",
+		"os.popen",
+		"os.spawn",
+		"os.exec",
+		"os.remove",
+		"os.unlink",
+		"os.rmdir",
+		"os.rename",
+		"os.replace",
+		"os.makedirs",
+		"shutil."
+	],
+	"forbidden_attr_suffixes": [
+		".open",
+		".read_text",
+		".write_text",
+		".read_bytes",
+		".write_bytes",
+		".mkdir",
+		".makedirs",
+		".remove",
+		".rmdir",
+		".unlink",
+		".rename"
+	],
+
+	"allowed_imports": [
+		"asyncio",
+		"csv",
+		"dataclasses",
+		"datetime",
+		"json",
+		"math",
+		"re",
+		"statistics",
+		"typing"
+	],
+	"allowed_calls": [],
+	"allowed_prefixes": [],
+	"allowed_attr_suffixes": []
+}

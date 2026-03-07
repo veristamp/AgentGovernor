@@ -1,0 +1,46 @@
+{
+	"name": "mcp-inspector",
+	"version": "2.0.0",
+	"description": "Governed Code Mode - Secure AI Agent Execution Framework",
+	"module": "src/cli/index.ts",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"start": "bun run src/cli/index.ts",
+		"dev": "bun run --watch src/cli/index.ts",
+		"typecheck": "tsc --noEmit",
+		"test": "bun test",
+		"analyze": "uv run auditor/analyzer.py",
+		"execute": "bun run src/cli/index.ts --execute",
+		"sync": "bun run src/cli/commands/sync-registry.ts",
+		"biome:format": "bunx biome format --write",
+		"biome:format:files": "bunx biome format --write",
+		"biome:lint": "bunx biome lint --write",
+		"biome:lint:files": "bunx biome lint --write",
+		"biome:check": "bunx biome check --write",
+		"biome:check:files": "bunx biome check --write"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.12",
+		"@types/bun": "latest",
+		"@types/node": "^25.0.6",
+		"drizzle-kit": "^0.31.8"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {
+		"@ai-sdk/anthropic": "^3.0.23",
+		"@ai-sdk/google": "^3.0.13",
+		"@ai-sdk/mcp": "^1.0.13",
+		"@ai-sdk/openai": "^3.0.18",
+		"@modelcontextprotocol/sdk": "^1.25.2",
+		"@types/pg": "^8.16.0",
+		"ai": "^6.0.49",
+		"drizzle-orm": "^0.45.1",
+		"pg": "^8.17.2",
+		"postgres": "^3.4.8",
+		"uuid": "^13.0.0",
+		"zod": "^4.3.6"
+	}
+}

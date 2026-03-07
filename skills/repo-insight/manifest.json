@@ -1,0 +1,17 @@
+{
+	"skillId": "repo-insight",
+	"version": 1,
+	"bindings": {
+		"graph": "modelcontextprotocol-python-sdk",
+		"mem": "memory",
+		"fs": "filesystem"
+	},
+	"fanoutTools": [
+		"modelcontextprotocol-python-sdk.docs-semantic-search",
+		"modelcontextprotocol-python-sdk.nodes-semantic-search",
+		"modelcontextprotocol-python-sdk.get-usage-dependency-links",
+		"memory.create-entities",
+		"filesystem.create-directory",
+		"filesystem.write-file"
+	]
+}
